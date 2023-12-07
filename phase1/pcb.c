@@ -25,6 +25,13 @@ static void reinitPcb(pcb_t *p){
     INIT_LIST_HEAD(&(p->p_sib));
     p->p_supportStruct = NULL;
     p->p_time = 0;
+
+    p->p_s.cause = 0;
+    p->p_s.entry_hi = 0;
+    p->p_s.hi = 0;
+    p->p_s.lo = 0;
+    p->p_s.pc_epc = 0;
+    p->p_s.status = 0;
 }
 
 /*
