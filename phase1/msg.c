@@ -90,7 +90,7 @@ void pushMessage(struct list_head *head, msg_t *m) {
  * was empty or if no message from p_ptr was found; otherwise return the pointer to the removed
  * message.
  */
-msg_t *popMessage(struct list_head *head, pcb_t *p_ptr) {
+msg_t *popMessage(struct list_head *head, pcb_PTR p_ptr) {
     msg_t* iter;
 
     if(p_ptr == NULL && !emptyMessageQ(head))

@@ -43,7 +43,7 @@ typedef struct pcb_t
     struct list_head p_list;
 
     /* process tree fields */
-    struct pcb_t *p_parent;   /* ptr to parent	*/
+    struct pcb_PTR p_parent;   /* ptr to parent	*/
     struct list_head p_child; /* children list */
     struct list_head p_sib;   /* sibling list  */
 
@@ -68,7 +68,7 @@ typedef struct msg_t
     struct list_head m_list;
 
     /* thread that sent this message */
-    struct pcb_t *m_sender;
+    struct pcb_PTR m_sender;
 
     /* the payload of the message */
 	unsigned int m_payload;
