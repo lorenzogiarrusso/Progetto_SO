@@ -8,8 +8,6 @@ cpu_t startTime;
 
 void scheduler()
 {
-    if (current_process != NULL)
-        current_process->p_time += (CURRENT_TOD - startTime); // update CPU time
 
     current_process = removeProcQ(&ready_queue);
 
@@ -17,7 +15,7 @@ void scheduler()
     {
         setTIMER(TIMESLICE); // Load timeslice (5 milliseconds) on the PLT
         STCK(startTime);     // sets startTime to the value of the low-order word of the TOD clock divided by the Time Scale
-        current_process->p_s.status |= TEBITON;
+        // current_process->p_s.status |= TEBITON;
         LDST(&(current_process->p_s));
     }
 

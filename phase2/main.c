@@ -46,26 +46,28 @@ int main(void)
     LDIT(PSECOND);
 
     // SSI PCB
-    pcb_PTR first = allocPcb();
-    insertProcQ(&ready_queue, first);
+    ssi_pcb = allocPcb();
+    ssi_pcb->p_pid = 0;
+    ssi_pcb->p_s.status |= IEPON | IMON; // Enable interrupts, set interrupt mask to all 1s
+    ssi_pcb->p_s.status & ~USERPON;      // Enable kernel mode
+    RAMTOP(ssi_pcb->p_s.reg_sp);
+    ssi_pcb->p_s.pc_epc = (memaddr)ssi; // NOTE: specs say s_pc instead of pc_epc idk if this is right
+    ssi_pcb->p_s.s_t9 = (memaddr)ssi;
+    insertProcQ(&ready_queue, ssi_pcb);
     process_count++;
-    first->p_s.status |= IEPON | IMON; // Enable interrupts, set interrupt mask to all 1s
-    first->p_s.status & ~USERPON;      // TODO?? Enable kernel mode; PENSO? DALLA DOCUMENTAZIONE SEMBRA CHE IL BIT DEVE ESSERE A 0 PER KERNEL MODE
-    // TODO: RAMTOP(???) non capisco dove sia lo stack pointer del pcb
-    first->p_s.pc_epc = (memaddr)ssi;
-    first->p_s.s_t9 = (memaddr)ssi;
 
-    // Instantiate a second process, place its PCB in the Ready Queue, and increment Process Count.
-    pcb_PTR second = allocPcb();
-    insertProcQ(&ready_queue, second);
+    // Test PCB
+    pcb_PTR test_pcb = allocPcb();
+    test_pcb->p_pid = 1;
+    test_pcb->p_s.status |= IEPON | IMON | TEBITON; // Enable interrupts, set interrupt mask to all 1s, enable PLT
+    test_pcb->p_s.status & ~USERPON;                // Enable kernel mode
+    RAMTOP(test_pcb->p_s.reg_sp);
+    test_pcb->p_s.reg_sp -= 2 * PAGESIZE; // NOTE: specs say FRAMESIZE???
+    test_pcb->p_s.pc_epc = (memaddr)test;
+    test_pcb->p_s.s_t9 = (memaddr)test;
+    insertProcQ(&ready_queue, test_pcb);
     process_count++;
-    second->p_s.status |= IEPON | IMON | TEBITON; // Enable interrupts, set interrupt mask to all 1s, enable PLT
-    second->p_s.status & ~USERPON;                // TODO?? Enable kernel mode; PENSO? DALLA DOCUMENTAZIONE SEMBRA CHE IL BIT DEVE ESSERE A 0 PER KERNEL MODE
-    // TODO: Di nuovo roba del RAMTOP che non so come si faccia
-    second->p_s.pc_epc = (memaddr)test;
-    second->p_s.s_t9 = (memaddr)test;
 
-    // Call the scheduler
     scheduler();
     return 0;
 }
