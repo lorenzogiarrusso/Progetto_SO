@@ -11,6 +11,7 @@
 
 /* Timer converter to get the right time */
 #define TIMERVALUE(T) ((T) * (*((cpu_t *)TIMESCALEADDR)))
+#define RESVINSTR 10
 
 /* Number of semaphore's device */
 #define SEMDEVLEN 49
