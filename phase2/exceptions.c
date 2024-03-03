@@ -2,6 +2,9 @@
 
 extern pcb_PTR current_process;
 
+/*
+ * Function called by the exception handler to pass up the handling of all events not handled by the interrupt handler nor the syscall handler.
+ */
 void passUpOrDie(int except_type, state_t *exceptionState)
 {
     if (current_process)
@@ -17,7 +20,6 @@ void passUpOrDie(int except_type, state_t *exceptionState)
     }
 }
 
-// TODO: Move somewhere else
 /*
  * Terminate the current process and its entire subtree.
  */
@@ -30,7 +32,6 @@ void die()
     scheduler(); // Let scheduler pick the next process to execute
 }
 
-// TODO: Move somewhere else
 /*
  * Terminate the subtree of the PCB pointed to by to_kill.
  */
@@ -47,7 +48,6 @@ static void terminateTree(pcb_PTR to_kill)
     terminateSingleProcess(to_kill);
 }
 
-// TODO: Move somewhere else
 /*
  * Terminate JUST the PCB pointed to by to_kill.
  */
@@ -61,6 +61,72 @@ static void terminateSingleProcess(pcb_PTR to_kill)
     freePcb(to_kill);
 }
 
+/*
+ * To be called by the exception handler upon receiving a SYS1/SYS2 syscall request.
+ * Processes the syscall request depending on the parameters specified in the state pointed to by excState.
+ */
+void syscallHandler(state_t *excState)
+{
+    int KUp = (getSTATUS() & USERPON) >> 3;
+
+    if (KUp == 0) // Current process was executing in kernel-mode
+    {
+        if (exc_state->reg_a0 == SENDMESSAGE) // Destination PCB address in a1, payload in a2
+        {
+
+            pcb_PTR dst = (pcb_PTR)(excState->reg_a1);
+
+            if (/* TODO: "is destination in pcbFree_h list?"*/)
+            {
+                exc_state->reg_v0 = DEST_NOT_EXIST;
+            }
+            else
+            {
+                msg_PTR msg = allocMsg();
+                msg->m_payload = excState->reg_a2;
+                msg->m_sender = current_process;
+
+                if ((dst = outProcQ(&ready_queue, dst)) != NULL)
+                {
+                    pushMessage(&dst->msg_inbox, msg);
+                    insertProcQ(&ready_queue, dst); // outProcQ lo aveva rimosso dalla Ready Queue
+                }
+                else if (/*TODO: "is destination waiting for a message?", forse serve mantenere la lista di processi in attesa di messaggio*/)
+                {
+                    pushMessage(&dst->msg_inbox, msg);
+
+                    if (/*TODO: controlla che stia aspettando un messaggio proprio da me (o da chiunque)*/)
+                    {
+                        softblock_count--;
+                        insertProcQ(&ready_queue, dst);
+                    }
+                }
+            }
+            excState->pc_epc += WORDLEN;
+            LDST(excState);
+        }
+        else if (exc_state->reg_a0 == RECEIVEMESSAGE) // Sender or ANYMESSAGE in a1, pointer to an area where the nucleus will store the payload of the message in a2 (NULL if the payload should be ignored)
+        {
+            // TODO
+            // Logica: controlla se nell'inbox c'è già un messaggio con le caratteristiche richieste
+            // Se non c'è, si deve bloccare, aggiungendosi alla lista di processi in attesa di messaggi (specificando il mittente desiderato)
+            // Per bloccarsi: salva BIOSDATAPAGE in p_s, aggiorna il CPU Time del current process, chiama lo scheduler.
+        }
+    }
+
+    else // Current process was executing in user-mode! => Cannot request SYS1 nor SYS2
+    {
+        excState->cause = RESVINSTR;
+        // TODO: Forse meglio chiamare direttamente passUpOrDie(GENERALEXCEPT, excState); invece di ricorsione??
+        exceptionHandler(); /*"the Nucleus should simulate a Program Trap exception when a privileged service is
+                            requested in user-mode. This is done by setting Cause.ExcCode in the stored exception state to RI
+                            (Reserved Instruction), and calling one’s Program Trap exception handler."*/
+    }
+}
+
+/*
+ * Handles all exceptions, "redirecting" them to the appropriate function depending on the exception code.
+ */
 void exceptionHandler()
 {
     // Here, BIOSDATAPAGE contains the processor state present during the exception
@@ -86,40 +152,8 @@ void exceptionHandler()
         passUpOrDie(GENERALEXCEPT, excState);
     }
 
-    else if (excCode == SYSEXCEPTION) // Syscalls, meglio spostare la gestione in una funzione a se stante
+    else if (excCode == SYSEXCEPTION) // Syscalls
     {
-        int KUp = (getSTATUS() & USERPON) >> 3;
-
-        if (KUp == 0) // Current process was executing in kernel-mode
-        {
-            if (reg_a0 == SENDMESSAGE) // TODO: il reg_a0 di chi??
-            {                          // Destination PCB address in a1, payload in a2
-
-                if (/*destination is in pcbFree_h list*/)
-                {
-                    // TODO: set the caller's v0 register to DEST_NOT_EXIST
-                }
-                else if (/*destination is in ready queue*/)
-                {
-                    // TODO: "message is just pushed into its inbox"
-                }
-                else if (/*destination is waiting for a message*/)
-                {
-                    // TODO: awaken it and put it into the Ready Queue
-                }
-            }
-            else if (reg_a0 == RECEIVEMESSAGE) // TODO: il reg_a0 di chi??
-            {                                  // Sender or ANYMESSAGE in a1, pointer to an area where the nucleus will store the payload of the message in a2 (NULL if the payload should be ignored)
-                if ()
-            }
-        }
-
-        else // Current process was executing in user-mode! Cannot request SYS1 nor SYS2
-        {
-            excState->cause = RESVINSTR;
-            exceptionHandler(); /*"the Nucleus should simulate a Program Trap exception when a privileged service is
-                                requested in user-mode. This is done by setting Cause.ExcCode in the stored exception state to RI
-                                (Reserved Instruction), and calling one’s Program Trap exception handler."*/
-        }
+        syscallHandler(excState);
     }
 }
