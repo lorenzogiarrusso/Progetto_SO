@@ -117,7 +117,7 @@ void syscallHandler(state_t *exc_state)
         else if (exc_state->reg_a0 == RECEIVEMESSAGE) // Sender or ANYMESSAGE in a1, pointer to an area where the nucleus will store the payload of the message in a2 (NULL if the payload should be ignored)
         {
             // TODO
-            // Destinatario specificato in exc_state->reg_a1, locazione dove copiare il payload specificata in a2 (se non NULL)
+            // Destinatario specificato in exc_state->reg_a1, locazione dove copiare il payload specificata in exc_state->reg_a2 (se non NULL)
             // Logica: controlla se nell'inbox c'è già un messaggio con il mittente richiesto (qualsiasi se ANYMESSAGE)
             // Se non c'è, si deve bloccare, aggiungendosi alla lista di processi in attesa di messaggi
             // Per bloccarsi: copia exc_state in current_process->p_s, aggiorna il CPU Time del current process (quando lo implementeremo..), inserisci processo nella lista dei bloccati, chiama scheduler()
