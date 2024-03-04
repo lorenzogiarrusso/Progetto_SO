@@ -1,6 +1,6 @@
 #include "../headers/lib.h"
 
-extern struct list_head *ready_queue;
+extern struct list_head ready_queue;
 extern int process_count, softblock_count;
 extern pcb_PTR current_process;
 

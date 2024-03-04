@@ -1,35 +1,26 @@
 #include "../headers/lib.h"
+#include <stddef.h>
 
-extern pcb_PTR current_process;
-
-/*
- * Function called by the exception handler to pass up the handling of all events not handled by the interrupt handler nor the syscall handler.
- */
-void passUpOrDie(int except_type, state_t *exceptionState)
+//?????? Non compila senza ma non chiedetemi il perche'
+void memcpy(void *dest, const void *src, size_t n)
 {
-    if (current_process)
+    for (size_t i = 0; i < n; i++)
     {
-        if (currentProcess->p_supportStruct == NULL)
-            die();
-        else // Pass up
-        {
-            (currentProcess->p_supportStruct)->sup_exceptState[except_type] = *exceptionState;
-            context_t info_to_pass = (currentProcess->p_supportStruct)->sup_exceptContext[except_type]; // Gather support info
-            LDCXT(info_to_pass.c_stackPtr, info_to_pass.c_status, info_to_pass.c_pc);                   // Pass up support info to the support level
-        }
+        ((char *)dest)[i] = ((char *)src)[i];
     }
 }
 
 /*
- * Terminate the current process and its entire subtree.
+ * Terminate JUST the PCB pointed to by to_kill.
  */
-void die()
+static void terminateSingleProcess(pcb_PTR to_kill)
 {
-    outChild(current_process);      // Remove current process from tree
-    terminateTree(current_process); // Remove its whole subtree as well
+    process_count--;
+    outProcQ(&ready_queue, to_kill); // Removes to_kill from the Ready Queue if it was there, otherwise does nothing
 
-    current_process = NULL;
-    scheduler(); // Let scheduler pick the next process to execute
+    // TODO: Rimuovere semafori che to_kill stava usando per attendere qualcosa eventualmente!!!!!!
+
+    freePcb(to_kill);
 }
 
 /*
@@ -49,23 +40,40 @@ static void terminateTree(pcb_PTR to_kill)
 }
 
 /*
- * Terminate JUST the PCB pointed to by to_kill.
+ * Terminate the current process and its entire subtree.
  */
-static void terminateSingleProcess(pcb_PTR to_kill)
+void die()
 {
-    process_count--;
-    outProcQ(&ready_queue, to_kill); // Removes to_kill from the Ready Queue if it was there, otherwise does nothing
+    outChild(current_process);      // Remove current process from tree
+    terminateTree(current_process); // Remove its whole subtree as well
 
-    // TODO: Rimuovere semafori che to_kill stava usando per attendere qualcosa eventualmente!!!!!!
+    current_process = NULL;
+    scheduler(); // Let scheduler pick the next process to execute
+}
 
-    freePcb(to_kill);
+/*
+ * Function called by the exception handler to pass up the handling of all events not handled by the interrupt handler nor the syscall handler.
+ */
+void passUpOrDie(int except_type, state_t *exceptionState)
+{
+    if (current_process)
+    {
+        if (current_process->p_supportStruct == NULL)
+            die();
+        else // Pass up
+        {
+            (current_process->p_supportStruct)->sup_exceptState[except_type] = *exceptionState;
+            context_t info_to_pass = (current_process->p_supportStruct)->sup_exceptContext[except_type]; // Gather support info
+            LDCXT(info_to_pass.stackPtr, info_to_pass.status, info_to_pass.pc);                          // Pass up support info to the support level
+        }
+    }
 }
 
 /*
  * To be called by the exception handler upon receiving a SYS1/SYS2 syscall request.
- * Processes the syscall request depending on the parameters specified in the state pointed to by excState.
+ * Processes the syscall request depending on the parameters specified in the state pointed to by exc_state.
  */
-void syscallHandler(state_t *excState)
+void syscallHandler(state_t *exc_state)
 {
     int KUp = (getSTATUS() & USERPON) >> 3;
 
@@ -74,16 +82,17 @@ void syscallHandler(state_t *excState)
         if (exc_state->reg_a0 == SENDMESSAGE) // Destination PCB address in a1, payload in a2
         {
 
-            pcb_PTR dst = (pcb_PTR)(excState->reg_a1);
+            pcb_PTR dst = (pcb_PTR)(exc_state->reg_a1);
 
-            if (/* TODO: "is destination in pcbFree_h list?"*/)
+            if ((dst = outProcQ(&pcbFree_h, dst)) != NULL) // The desired destination is not assigned to a currently existing PCB
             {
+                insertProcQ(&pcbFree_h, dst); // outProcQ lo aveva rimosso dalla lista dei PCB liberi
                 exc_state->reg_v0 = DEST_NOT_EXIST;
             }
             else
             {
                 msg_PTR msg = allocMsg();
-                msg->m_payload = excState->reg_a2;
+                msg->m_payload = exc_state->reg_a2;
                 msg->m_sender = current_process;
 
                 if ((dst = outProcQ(&ready_queue, dst)) != NULL)
@@ -91,36 +100,34 @@ void syscallHandler(state_t *excState)
                     pushMessage(&dst->msg_inbox, msg);
                     insertProcQ(&ready_queue, dst); // outProcQ lo aveva rimosso dalla Ready Queue
                 }
-                else if (/*TODO: "is destination waiting for a message?", forse serve mantenere la lista di processi in attesa di messaggio*/)
+                else if (/*TODO: "is destination waiting for a message?"*/)
                 {
                     pushMessage(&dst->msg_inbox, msg);
 
-                    if (/*TODO: controlla che stia aspettando un messaggio proprio da me (o da chiunque)*/)
+                    if (/*TODO: controlla che stia aspettando un messaggio proprio da me (o da chiunque)*/ 1)
                     {
                         softblock_count--;
                         insertProcQ(&ready_queue, dst);
                     }
                 }
             }
-            excState->pc_epc += WORDLEN;
-            LDST(excState);
+            exc_state->pc_epc += WORDLEN;
+            LDST(exc_state);
         }
         else if (exc_state->reg_a0 == RECEIVEMESSAGE) // Sender or ANYMESSAGE in a1, pointer to an area where the nucleus will store the payload of the message in a2 (NULL if the payload should be ignored)
         {
             // TODO
-            // Logica: controlla se nell'inbox c'è già un messaggio con le caratteristiche richieste
-            // Se non c'è, si deve bloccare, aggiungendosi alla lista di processi in attesa di messaggi (specificando il mittente desiderato)
-            // Per bloccarsi: salva BIOSDATAPAGE in p_s, aggiorna il CPU Time del current process, chiama lo scheduler.
+            // Destinatario specificato in exc_state->reg_a1, locazione dove copiare il payload specificata in a2 (se non NULL)
+            // Logica: controlla se nell'inbox c'è già un messaggio con il mittente richiesto (qualsiasi se ANYMESSAGE)
+            // Se non c'è, si deve bloccare, aggiungendosi alla lista di processi in attesa di messaggi
+            // Per bloccarsi: copia exc_state in current_process->p_s, aggiorna il CPU Time del current process (quando lo implementeremo..), inserisci processo nella lista dei bloccati, chiama scheduler()
         }
     }
 
     else // Current process was executing in user-mode! => Cannot request SYS1 nor SYS2
     {
-        excState->cause = RESVINSTR;
-        // TODO: Forse meglio chiamare direttamente passUpOrDie(GENERALEXCEPT, excState); invece di ricorsione??
-        exceptionHandler(); /*"the Nucleus should simulate a Program Trap exception when a privileged service is
-                            requested in user-mode. This is done by setting Cause.ExcCode in the stored exception state to RI
-                            (Reserved Instruction), and calling one’s Program Trap exception handler."*/
+        exc_state->cause = RESVINSTR;
+        exceptionHandler();
     }
 }
 

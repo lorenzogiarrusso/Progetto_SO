@@ -2,8 +2,8 @@
 #include "p2test.c"
 
 // Declare the Level 3 global variables
-unsigned int process_count;
-unsigned int softblock_count;
+int process_count;
+int softblock_count;
 struct list_head ready_queue;
 pcb_PTR current_process;
 struct list_head blocked_pcbs;
@@ -49,10 +49,10 @@ int main(void)
     ssi_pcb = allocPcb();
     ssi_pcb->p_pid = 0;
     ssi_pcb->p_s.status |= IEPON | IMON; // Enable interrupts, set interrupt mask to all 1s
-    ssi_pcb->p_s.status & ~USERPON;      // Enable kernel mode
+    ssi_pcb->p_s.status &= ~USERPON;     // Enable kernel mode
     RAMTOP(ssi_pcb->p_s.reg_sp);
     ssi_pcb->p_s.pc_epc = (memaddr)ssi; // NOTE: specs say s_pc instead of pc_epc idk if this is right
-    ssi_pcb->p_s.s_t9 = (memaddr)ssi;
+    ssi_pcb->p_s.reg_t9 = (memaddr)ssi;
     insertProcQ(&ready_queue, ssi_pcb);
     process_count++;
 
@@ -60,11 +60,11 @@ int main(void)
     pcb_PTR test_pcb = allocPcb();
     test_pcb->p_pid = 1;
     test_pcb->p_s.status |= IEPON | IMON | TEBITON; // Enable interrupts, set interrupt mask to all 1s, enable PLT
-    test_pcb->p_s.status & ~USERPON;                // Enable kernel mode
+    test_pcb->p_s.status &= ~USERPON;               // Enable kernel mode
     RAMTOP(test_pcb->p_s.reg_sp);
     test_pcb->p_s.reg_sp -= 2 * PAGESIZE; // NOTE: specs say FRAMESIZE???
     test_pcb->p_s.pc_epc = (memaddr)test;
-    test_pcb->p_s.s_t9 = (memaddr)test;
+    test_pcb->p_s.reg_t9 = (memaddr)test;
     insertProcQ(&ready_queue, test_pcb);
     process_count++;
 
