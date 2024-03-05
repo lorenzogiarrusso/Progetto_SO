@@ -116,11 +116,59 @@ void syscallHandler(state_t *exc_state)
         }
         else if (exc_state->reg_a0 == RECEIVEMESSAGE) // Sender or ANYMESSAGE in a1, pointer to an area where the nucleus will store the payload of the message in a2 (NULL if the payload should be ignored)
         {
-            // TODO
-            // Destinatario specificato in exc_state->reg_a1, locazione dove copiare il payload specificata in exc_state->reg_a2 (se non NULL)
-            // Logica: controlla se nell'inbox c'è già un messaggio con il mittente richiesto (qualsiasi se ANYMESSAGE)
-            // Se non c'è, si deve bloccare, aggiungendosi alla lista di processi in attesa di messaggi
-            // Per bloccarsi: copia exc_state in current_process->p_s, aggiorna il CPU Time del current process (quando lo implementeremo..), inserisci processo nella lista dei bloccati, chiama scheduler()
+            if (emptyMessageQ(&current_process->msg_inbox))
+            {
+                // No message in the inbox, block the process
+                current_process->p_s = exc_state;
+                current_process->p_time = ; //Da inserire
+                insertProcQ(&blocked_queue, current_process);
+                scheduler();
+            }
+
+            else if(exc_state->reg_a1 == ANYMESSAGE){
+                msg_t *received_msg = popMessage(&current_process->msg_inbox);
+
+                //Non ricordo come abbiamo chiamato il payload dei vari msg quindi uso m_payload da sostiuire se poi è sbagliato
+                if (exc_state->reg_a2 != NULL)
+                {
+                    memcpy(exc_state->reg_a2, received_msg->m_payload, sizeof(received_msg->m_payload));
+            
+                }
+
+                freeMsg(received_msg);
+            }
+
+            else{
+                msg_t *received_msg = headMessage(&current_process->msg_inbox);
+
+                //*received_msg non ricordo se aveva il parametro next per passare al prossimo messaggio
+                //Non ricordo come abbiamo chiamato il sender
+                while(*received_msg != NULL && *received_msg->m_sender != exc_state->reg_a1){
+                    received_msg = received_msg->next;
+                }
+
+                if (received_msg == NULL)
+                {
+                    // No message in the inbox, block the process
+                    current_process->p_s = exc_state;
+                    current_process->p_time = ; //Da inserire
+                    insertProcQ(&blocked_queue, current_process);
+                    scheduler();
+                }
+
+                else
+                {
+                    if (payload_location != NULL)
+                    {
+                        memcpy(payload_location, received_msg->m_payload, sizeof(received_msg->m_payload));
+                    }
+
+                    freeMsg(received_msg);
+                }
+            }
+
+            exc_state->pc_epc += WORDLEN;
+            LDST(exc_state);
         }
     }
 
