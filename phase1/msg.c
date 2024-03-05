@@ -1,7 +1,5 @@
 #include "../headers/msg.h"
 
-#include "../klog.c"
-
 static msg_t msgTable[MAXMESSAGES];
 LIST_HEAD(msgFree_h);
 
