@@ -56,7 +56,7 @@ support_t* GetSupportData(msg_t* m){//ciclo che scorre la ready_queue e trova il
 void ssi()
 {
   /*TODO:
-  ci sono funzioni che ritornano tipi diversi (invece che return salviamo i risultati in variabili ???)
+  creare variabili per salvare i risultati di alcune funzioni ???
   "If service does not match any of those provided by the SSI, the SSI should terminate the process
 and its progeny" ???
   SSIRequest ???
@@ -78,15 +78,15 @@ and its progeny" ???
                     DoIO();
                     break;
                 case GETTIME:
-                    return GetCPUTime();
+                    GetCPUTime();
                     break;
                 case CLOCKWAIT:
                     break;
                 case GETSUPPORTPTR:
-                    return GetSupportData(msg);
+                    GetSupportData(msg);
                     break;
                 case GETPROCESSID:
-                    return msg->m_sender->p_pid;
+                    /*tocca salvarlo da qualche parte*/ msg->m_sender->p_pid;
                     break;
 
             }
