@@ -56,6 +56,13 @@ void endInterrupt()
 
 void PLT_interruptHandler()
 {
+    loadTimer(TIMESLICE);
+
+    copyProcessorStateToPCB(&CurrentProcess->p_s); // TF!?!?!?!
+
+    insertProcQ(ready_queue, currentPCB);
+
+    Scheduler();
 }
 
 /*
@@ -63,8 +70,48 @@ void PLT_interruptHandler()
  */
 void IT_interruptHandler()
 {
+    //1
+    LDIT(PSECOND);
+
+    //2
+    pcb_PTR currentPCB = headProcQ(blocked_WaitforClock);
+
+    while(currentPCB != NULL){
+        insertProcQ(ready_queue, currentPCB);
+        pcb_PTR nextcurrentPCB = currentPCB->next;
+        removeProcQ(blocked_WaitforClock);
+        outProcQ(blocked_queue, currentPCB);
+        currentPCB = nextcurrentPCB;
+    }
+
+    //3
+    state_t *excState = (state_t *)BIOSDATAPAGE;
+    LDST(excState)
 }
 
 void nonTimer_interruptHandler(int causeIP)
 {
+    //1
+    int IntlineNo = causeIP;
+    int DevNo = 0;//Switch su cosa? Questo è il device che usiamo ma su cosa devo andare a controllare la condizione per cambiare device?
+    int devAddrBase = 0x10000054 + ((IntlineNo - 3) * 0x80) + (DevNo * 0x10); //Indirizzo del registro del dispositivo(?)
+
+    //2
+    int statusCode = *((int *)devAddrBase); //Salvo lo stato del dispositivo
+
+    //3
+    *((int *)devAddrBase) = ACK; //Dico di aver ricevuto lo stato del dispositivo
+    
+    //4
+    //Dove e con scritto cosa?
+    pcb_PTR *currentPCB = removeProcQ();//QUALE DIO CANE?
+
+    //5
+    currentPCB->v0 = statusCode;
+
+    //6
+    insertProcQ(ready_queue, currentPCB);
+
+    //7
+    LDST();//Di cosa?
 }
