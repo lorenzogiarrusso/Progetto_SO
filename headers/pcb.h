@@ -14,6 +14,7 @@ void insertProcQ(struct list_head *head, pcb_PTR p);
 pcb_PTR headProcQ(struct list_head *head);
 pcb_PTR removeProcQ(struct list_head *head);
 pcb_PTR outProcQ(struct list_head *head, pcb_PTR p);
+pcb_PTR findProcQ(struct list_head *head, pcb_PTR p);
 int emptyChild(pcb_PTR p);
 void insertChild(pcb_PTR prnt, pcb_PTR p);
 pcb_PTR removeChild(pcb_PTR p);

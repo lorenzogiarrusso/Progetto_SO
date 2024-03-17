@@ -128,3 +128,18 @@ msg_t *headMessage(struct list_head *head)
     else
         return container_of(firstElem, struct msg_t, m_list);
 }
+
+/*
+ * Looks for the first message sent by snd in the message list whose head pointer is pointed to by head.
+ * If not found, return NULL. If found, returns the message AND removes it from the list.
+ */
+msg_PTR outMsgBySender(struct list_head *head, pcb_PTR snd)
+{
+    msg_PTR iter;
+    list_for_each_entry(iter, head, m_list)
+    { // Itera sui messaggi veri e propri nella lista
+        if (iter->m_sender == snd)
+            return iter; // Messaggio trovato nella coda e restituito
+    }
+    return NULL; // Messaggio NON trovato nella lista
+}

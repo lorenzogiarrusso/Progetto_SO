@@ -86,7 +86,7 @@ int emptyProcQ(struct list_head *head)
 }
 
 /*
- * Insert the PCB pointed by p into the process queue whose head pointer is pointed to by head.
+ * Enqueues the PCB pointed by p into the process queue whose head pointer is pointed to by head.
  */
 void insertProcQ(struct list_head *head, pcb_PTR p)
 {
@@ -132,9 +132,24 @@ pcb_PTR outProcQ(struct list_head *head, pcb_PTR p)
 {
     pcb_t *iter;
     list_for_each_entry(iter, head, p_list)
+    { // Itera sui PCB veri e propri nella coda
+        if (iter == p)
+            return removeProcQ(list_prev(&(p->p_list))); // PCB trovato nella coda e rimosso
+    }
+    return NULL; // PCB NON trovato nella coda
+}
+
+/*
+ * Looks for the PCB pointed to by p in the process queue whose head pointer is pointed to by head.
+ * If not found, return NULL. If found, returns p WITHOUT removing it from the queue.
+ */
+pcb_PTR findProcQ(struct list_head *head, pcb_PTR p)
+{
+    pcb_t *iter;
+    list_for_each_entry(iter, head, p_list)
     { // Itera sui PCB veri e propri nella lista
         if (iter == p)
-            return removeProcQ(list_prev(&(p->p_list))); // PCB trovato nella lista e rimosso
+            return p; // PCB trovato nella coda e restituito
     }
     return NULL; // PCB NON trovato nella lista
 }

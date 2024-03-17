@@ -14,5 +14,6 @@ void insertMessage(struct list_head *head, msg_t *m);
 void pushMessage(struct list_head *head, msg_t *m);
 msg_t *popMessage(struct list_head *head, pcb_PTR p_ptr);
 msg_t *headMessage(struct list_head *head);
+msg_PTR outMsgBySender(struct list_head *head, pcb_PTR snd);
 
 #endif

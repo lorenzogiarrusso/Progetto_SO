@@ -6,7 +6,7 @@ int process_count;
 int softblock_count;
 struct list_head ready_queue;
 pcb_PTR current_process;
-struct list_head blocked_pcbs;
+struct list_head blocked_queue;
 pcb_PTR ssi_pcb;
 
 extern void test(); // from p2test.c
@@ -39,7 +39,7 @@ int main(void)
     softblock_count = 0;
     mkEmptyProcQ(&ready_queue);
     current_process = NULL;
-    mkEmptyProcQ(&blocked_pcbs);
+    mkEmptyProcQ(&blocked_queue);
     ssi_pcb = NULL;
 
     // Load the system-wide Interval Timer with 100 milliseconds (constant PSECOND)
@@ -51,7 +51,7 @@ int main(void)
     ssi_pcb->p_s.status |= IEPON | IMON; // Enable interrupts, set interrupt mask to all 1s
     ssi_pcb->p_s.status &= ~USERPON;     // Enable kernel mode
     RAMTOP(ssi_pcb->p_s.reg_sp);
-    ssi_pcb->p_s.pc_epc = (memaddr)ssi; // NOTE: specs say s_pc instead of pc_epc idk if this is right
+    ssi_pcb->p_s.pc_epc = (memaddr)ssi;
     ssi_pcb->p_s.reg_t9 = (memaddr)ssi;
     insertProcQ(&ready_queue, ssi_pcb);
     process_count++;
@@ -62,7 +62,7 @@ int main(void)
     test_pcb->p_s.status |= IEPON | IMON | TEBITON; // Enable interrupts, set interrupt mask to all 1s, enable PLT
     test_pcb->p_s.status &= ~USERPON;               // Enable kernel mode
     RAMTOP(test_pcb->p_s.reg_sp);
-    test_pcb->p_s.reg_sp -= 2 * PAGESIZE; // NOTE: specs say FRAMESIZE???
+    test_pcb->p_s.reg_sp -= 2 * PAGESIZE;
     test_pcb->p_s.pc_epc = (memaddr)test;
     test_pcb->p_s.reg_t9 = (memaddr)test;
     insertProcQ(&ready_queue, test_pcb);

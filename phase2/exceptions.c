@@ -1,7 +1,9 @@
 #include "../headers/lib.h"
 #include <stddef.h>
 
-//?????? Non compila senza ma non chiedetemi il perche'
+/*
+ * Copies the content pointed to by src in dest. Content has size n.
+ */
 void memcpy(void *dest, const void *src, size_t n)
 {
     for (size_t i = 0; i < n; i++)
@@ -84,85 +86,92 @@ void syscallHandler(state_t *exc_state)
 
             pcb_PTR dst = (pcb_PTR)(exc_state->reg_a1);
 
-            if ((dst = outProcQ(&pcbFree_h, dst)) != NULL) // The desired destination is not assigned to a currently existing PCB
+            if ((dst = findProcQ(&pcbFree_h, dst)) != NULL) // If desired destination is not assigned to a currently existing PCB
             {
-                insertProcQ(&pcbFree_h, dst); // outProcQ lo aveva rimosso dalla lista dei PCB liberi
+                // NOTE: vecchia implementazione che usava outProcQ e poi reinseriva il PCB rompeva la FIFOness; qui non importa ma lo cambio per consistenza
                 exc_state->reg_v0 = DEST_NOT_EXIST;
             }
             else
             {
                 msg_PTR msg = allocMsg();
-                msg->m_payload = exc_state->reg_a2;
-                msg->m_sender = current_process;
-
-                if ((dst = outProcQ(&ready_queue, dst)) != NULL)
+                if (msg == NULL)
+                    exc_state->reg_v0 = MSGNOGOOD;
+                else
                 {
-                    pushMessage(&dst->msg_inbox, msg);
-                    insertProcQ(&ready_queue, dst); // outProcQ lo aveva rimosso dalla Ready Queue
-                }
-                else if (/*TODO: "is destination waiting for a message?"*/)
-                {
-                    pushMessage(&dst->msg_inbox, msg);
+                    msg->m_payload = exc_state->reg_a2;
+                    msg->m_sender = current_process;
 
-                    if (/*TODO: controlla che stia aspettando un messaggio proprio da me (o da chiunque)*/ 1)
+                    if ((dst = findProcQ(&ready_queue, dst)) != NULL) // If receiver is in the Ready Queue, we simply push the message into its inbox
                     {
-                        softblock_count--;
-                        insertProcQ(&ready_queue, dst);
+                        pushMessage(&dst->msg_inbox, msg);
+                        // NOTE: vecchia implementazione che usava outProcQ e poi reinseriva il PCB rompeva la FIFOness, qui sarebbe stato importante
                     }
+                    else if ((dst = findProcQ(&blocked_queue, dst)) != NULL) // Receiver is blocked, we push the message into its inbox and unblock it if it was blocked waiting for this message
+                    {
+                        pushMessage(&dst->msg_inbox, msg);
+
+                        // If receiver is blocked waiting for any message or for my message, unblock it and add it to the Ready Queue!
+                        if ((dst->p_s.reg_a0 == RECEIVEMESSAGE) && (dst->p_s.reg_a1 == ANYMESSAGE || (pcb_PTR)(dst->p_s.reg_a1) == current_process))
+                        {
+                            outProcQ(&blocked_queue, dst);
+                            softblock_count--;
+                            insertProcQ(&ready_queue, dst);
+                        }
+                    }
+
+                    exc_state->reg_v0 = 0; // Message sent succesfully
                 }
             }
             exc_state->pc_epc += WORDLEN;
             LDST(exc_state);
         }
         else if (exc_state->reg_a0 == RECEIVEMESSAGE) // Sender or ANYMESSAGE in a1, pointer to an area where the nucleus will store the payload of the message in a2 (NULL if the payload should be ignored)
+                                                      // NOTE: a1 eventually contains THE ADDRESS OF the desired sender (treat it like a pointer)
+                                                      // After the function returns, caller's v0 must contain the identifier of the extracted message's sender
         {
-            if (emptyMessageQ(&current_process->msg_inbox))
+            if (emptyMessageQ(&(current_process->msg_inbox)))
             {
                 // No message in the inbox, block the process
                 current_process->p_s = exc_state;
-                current_process->p_time = ; //Da inserire
+                current_process->p_time = ; // TODO p_time
                 insertProcQ(&blocked_queue, current_process);
+                softblock_count++;
                 scheduler();
             }
 
-            else if(exc_state->reg_a1 == ANYMESSAGE){
-                msg_t *received_msg = popMessage(&current_process->msg_inbox);
+            else if (exc_state->reg_a1 == ANYMESSAGE)
+            {
+                msg_t *received_msg = popMessage(&(current_process->msg_inbox), NULL);
 
-                //Non ricordo come abbiamo chiamato il payload dei vari msg quindi uso m_payload da sostiuire se poi è sbagliato
                 if (exc_state->reg_a2 != NULL)
                 {
                     memcpy(exc_state->reg_a2, received_msg->m_payload, sizeof(received_msg->m_payload));
-            
                 }
 
+                exc_state->reg_v0 = (unsigned int)(&(received_msg->m_sender));
                 freeMsg(received_msg);
             }
 
-            else{
-                msg_t *received_msg = headMessage(&current_process->msg_inbox);
-
-                //*received_msg non ricordo se aveva il parametro next per passare al prossimo messaggio
-                //Non ricordo come abbiamo chiamato il sender
-                while(*received_msg != NULL && *received_msg->m_sender != exc_state->reg_a1){
-                    received_msg = received_msg->next;
-                }
+            else
+            {
+                msg_PTR received_msg = outMsgBySender(&(current_process->msg_inbox), (pcb_PTR)(exc_state->reg_a1));
 
                 if (received_msg == NULL)
                 {
-                    // No message in the inbox, block the process
+                    // No message from the desired sender is in the inbox, block the process
                     current_process->p_s = exc_state;
-                    current_process->p_time = ; //Da inserire
+                    current_process->p_time = ; // TODO p_time
                     insertProcQ(&blocked_queue, current_process);
+                    softblock_count++;
                     scheduler();
                 }
 
                 else
                 {
-                    if (payload_location != NULL)
-                    {
-                        memcpy(payload_location, received_msg->m_payload, sizeof(received_msg->m_payload));
-                    }
+                    if (exc_state->reg_a2 != NULL)
+                        memcpy(exc_state->reg_a2, received_msg->m_payload, sizeof(received_msg->m_payload));
 
+                    exc_state->reg_v0 = (unsigned int)(&(received_msg->m_sender));
                     freeMsg(received_msg);
                 }
             }
@@ -174,7 +183,7 @@ void syscallHandler(state_t *exc_state)
 
     else // Current process was executing in user-mode! => Cannot request SYS1 nor SYS2
     {
-        exc_state->cause = RESVINSTR;
+        exc_state->cause = PRIVINSTR;
         exceptionHandler();
     }
 }
