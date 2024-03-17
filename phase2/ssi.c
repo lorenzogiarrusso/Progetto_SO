@@ -53,6 +53,23 @@ support_t* GetSupportData(msg_t* m){//ciclo che scorre la ready_queue e trova il
     return NULL;
 }
 
+pcb clock_wait_list = NULL; // Global list of PCBs waiting for clock tick
+
+void WaitForClock() {
+    pcb_PTR current_process = m_sender;
+    
+    pcb_PTR tmp = headProcQ(clock_wait_list)
+    while(tmp != NULL){
+        pcb_PTR aux = tmp;
+        tmp = tmp->next;
+        insertProcQ(ready_queue, aux);
+        removeProcQ(clock_wait_list);
+    }
+
+    insertProcQ(clock_wait_list, current_process);
+}
+
+
 void ssi()
 {
   /*TODO:
