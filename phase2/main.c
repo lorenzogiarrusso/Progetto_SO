@@ -8,6 +8,7 @@ struct list_head ready_queue;
 pcb_PTR current_process;
 struct list_head blocked_queue;
 pcb_PTR ssi_pcb;
+state_t *exc_state;
 
 extern void test(); // from p2test.c
 
@@ -41,6 +42,7 @@ int main(void)
     current_process = NULL;
     mkEmptyProcQ(&blocked_queue);
     ssi_pcb = NULL;
+    exc_state = NULL;
 
     // Load the system-wide Interval Timer with 100 milliseconds (constant PSECOND)
     LDIT(PSECOND);

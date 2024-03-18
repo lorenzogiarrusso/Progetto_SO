@@ -15,7 +15,7 @@ void scheduler()
     {
         setTIMER(TIMESLICE); // Load timeslice (5 milliseconds) on the PLT
         STCK(startTime);     // sets startTime to the value of the low-order word of the TOD clock divided by the Time Scale
-        // current_process->p_s.status |= TEBITON;
+        // current_process->p_s.status |= TEBITON; //enables timer
         LDST(&(current_process->p_s));
     }
 

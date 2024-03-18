@@ -194,30 +194,30 @@ void syscallHandler(state_t *exc_state)
 void exceptionHandler()
 {
     // Here, BIOSDATAPAGE contains the processor state present during the exception
-    // The cause of this exception is encoded in the .ExcCode field of the Cause register (Cause.ExcCode)
+    // The cause of this exception is encoded in the .exc_code field of the Cause register (Cause.exc_code)
     // in the saved exception state.
-    // Tip: To get the ExcCode you can use getCAUSE(), the constants GETEXECCODE and CAUSESHIFT.
-    state_t *excState = (state_t *)BIOSDATAPAGE;     // Exception state
-    unsigned int excCode = getCAUSE() & GETEXECCODE; // Exception code
-    excCode = excCode >> CAUSESHIFT;
+    // Tip: To get the exc_code you can use getCAUSE(), the constants GETEXECCODE and CAUSESHIFT.
+    exc_state = (state_t *)BIOSDATAPAGE;              // Exception state
+    unsigned int exc_code = getCAUSE() & GETEXECCODE; // Exception code
+    exc_code = exc_code >> CAUSESHIFT;
 
-    if (excCode == IOINTERRUPTS) // Interrupts
+    if (exc_code == IOINTERRUPTS) // Interrupts
     {
         interruptHandler(/**/); // TODO: vedi che parametro va passato all'interrupt handler
     }
 
-    else if (excCode >= 1 && excCode <= 3) // TLB Exceptions
+    else if (exc_code >= 1 && exc_code <= 3) // TLB Exceptions
     {
-        passUpOrDie(PGFAULTEXCEPT, excState);
+        passUpOrDie(PGFAULTEXCEPT, exc_state);
     }
 
-    else if ((excCode >= 4 && excCode <= 7) || (excCode >= 9 && excCode <= 12)) // Program Traps
+    else if ((exc_code >= 4 && exc_code <= 7) || (exc_code >= 9 && exc_code <= 12)) // Program Traps
     {
-        passUpOrDie(GENERALEXCEPT, excState);
+        passUpOrDie(GENERALEXCEPT, exc_state);
     }
 
-    else if (excCode == SYSEXCEPTION) // Syscalls
+    else if (exc_code == SYSEXCEPTION) // Syscalls
     {
-        syscallHandler(excState);
+        syscallHandler(exc_state);
     }
 }
