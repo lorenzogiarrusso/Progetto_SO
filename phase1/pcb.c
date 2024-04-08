@@ -2,7 +2,6 @@
 
 static pcb_t pcbTable[MAXPROC];
 LIST_HEAD(pcbFree_h);
-static int next_pid = 1;
 
 /*
  * Initialize the pcbFree list to contain all the elements of the static array of MAXPROC PCBs.

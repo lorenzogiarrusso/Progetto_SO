@@ -62,6 +62,9 @@ typedef struct pcb_t
 
     /* process id */
     int p_pid;
+
+    /* number of device the PCB is blocked on */
+    int dev_n;
 } pcb_t, *pcb_PTR;
 
 /* message entry type */

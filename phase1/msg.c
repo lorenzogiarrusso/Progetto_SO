@@ -103,7 +103,12 @@ msg_t *popMessage(struct list_head *head, pcb_PTR p_ptr)
     msg_t *iter;
 
     if (p_ptr == NULL && !emptyMessageQ(head))
-        return headMessage(head);
+    {
+        iter = container_of(head->next, msg_t, m_list);
+        list_del(head->next);
+        return iter;
+    }
+
     list_for_each_entry(iter, head, m_list)
     { // Itera sui messaggi veri e propri nella lista
         if (iter->m_sender == p_ptr)

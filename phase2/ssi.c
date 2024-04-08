@@ -1,149 +1,227 @@
 #include "../headers/lib.h"
 #include <umps/libumps.h>
 
-extern struct list_head ready_queue;
-//extern pcb_PTR ssi_pcb; //probabilmente viene preso globalmente e non serve dichiararlo di nuovo (nel caso però c'è)
+#define TERMINALLINE 7
 
+// Codice di Lorenzo da qui
 
-void createProcess(ssi_payload_PTR p){//inizializza un nuovo pcb e lo inserisce nella ready_queue
-    pcb_t* new_pcb;
-    reinitPcb(new_pcb);
+unsigned int ssi_request(pcb_PTR caller, ssi_payload_PTR payload);
 
-    ssi_create_process_PTR create_info = p->arg;
-    new_pcb->p_s = create_info->state;
-    new_pcb->p_supportStruct = create_info->support;
-
-    insertProcQ(&m->m_sender->p_list,new_pcb);
-    insertChild(&m->m_sender->p_sib,new_pcb);
-
-    insertProcQ(&ready_queue,new_pcb);
-}
-
-void terminateProcess(ssi_payload_PTR p){//elimina o il processo che fa la send o quello specificato in arg dalla ready_queue
-
-    if(p->arg == NULL){
-        outProcQ(&ready_queue,m->m_sender);
-    }else{
-        outProcQ(&ready_queue,p->arg);
+/*
+ * Function to block a PCB on the specified line by inserting it onto the appropriate blocked queue.
+ * term > 0 for transmit onto terminal, otherwise for receive from terminal
+ */
+void blockPCB(pcb_PTR p, int line, int term)
+{
+    outProcQ(&ready_queue, p);
+    struct list_head *correspondingQueue = NULL;
+    if (line == IL_DISK)
+    {
+        correspondingQueue = &blocked_disk;
+    }
+    else if (line == IL_FLASH)
+    {
+        correspondingQueue = &blocked_flash;
+    }
+    else if (line == IL_ETHERNET)
+    {
+        correspondingQueue = &blocked_eth;
+    }
+    else if (line == IL_PRINTER)
+    {
+        correspondingQueue = &blocked_printer;
+    }
+    else if (line == IL_TERMINAL)
+    {
+        if (term == 0)
+            correspondingQueue = &blocked_terminal_receive;
+        else
+            correspondingQueue = &blocked_terminal_transmit;
     }
 
+    if (correspondingQueue != NULL)
+        insertProcQ(correspondingQueue, p);
+    // the condition for the if should never be false at this point!
 }
 
-typedef struct WaitingDoIO{
-    pct_PTR pcb;
-    unsigned int device;
-}
-
-//Inizializzare una nuova lista dei processi bloccati per il DoIO. Non la metto in quanto non so se ne è già una presente
-
-void DoIO(){
-
-    insertProcQ(blocked_process, current_process);   
-    insertProcQ(blocked_process_DoIO, (current_process, //Indirizzo device IO)) //So anche che non si può inserire perchè serve un pcb ma non penso sia efficace inserire un nuovo campo su PCB. Dobbiamo per forza creare una nuova lista?
-    current_process = NULL;
-    WAIT();
-
-    unsigned int device_address = //Indirizzo device IO;
-    unsigned int ack_command = ACK;
-    SYSCALL(SENDMESSAGE, device_address, (unsigned int)(&ack_command), 0);
-
-
-    ssi_do_io_t do_io = {
-        .commandAddr = command,
-        .commandValue = value,
-    };
-    ssi_payload_t payload = {
-        .service_code = DOIO,
-        .arg = &do_io,
-    };
-
-    SYSCALL(SENDMESSAGE, (unsigned int)ssi_pcb, (unsigned int)(&payload), 0);
-    SYSCALL(RECEIVEMESSAGE, (unsigned int) ssi_pcb, (unsigned int)(&response), 0);
-
-    WaitingDoIO current_process = headProcQ(blocked_process_DoIO); //Stessa cosa ultimo commento
-    
-    while(WaitingDoIO != NULL && WaitingDoIO->device != device_address){
-        WaitingDoIO = WaitingDoIO->next;
-    }
-    insertProcQ(ready_queue, WaitingDoIO->pcb);
-    removeProcQ(blocked_process_DoIO, WaitingDoIO);
-    //Devo modificare lo stato del pcb? In realtà lo stato non è mai stato in pausa quindi dovrebbe essere ancora in run no?
- }
-
-signed int GetCPUTime(){//ciclo che prende i p_time da tutti i processi nella ready_queue e restituisce la somma
-    pcb_PTR p;
-    signed int time = 0;
-    list_for_each_entry(p,&ready_queue,p_list){
-        time += p->p_time;
-    }
-    return time;
-}
-
-support_t* GetSupportData(msg_t* m){//ciclo che scorre la ready_queue e trova il pcb che ha fatto la send per restituire la struttura di supporto
-  //come nome dentro al pcb per gli elementi list_head della ready_queue ho utilizzato p_list ???
-    pcb_PTR p == NULL;
-    list_for_each_entry(p,&ready_queue,p_list){
-        if(p == m->m_sender){
-            return p->p_supportStruct;
+/*
+ * Given an address, calculate corresponding device line and number. Then, block the given pcb on said device.
+ */
+void blockPCBfromAddr(memaddr addr, pcb_PTR p)
+{
+    // TODO: Controllare che rispetti davvero la formula dalle specifiche/POPS perche' non ne sono sicuro (o cambiare proprio implementazione)
+    // Special handling for terminal devices due to difference between transmit and receive
+    for (int i = 0; i <= 7; i++)
+    {
+        termreg_t *base_addr = (termreg_t *)DEV_REG_ADDR(7, i);
+        if ((memaddr) & (base_addr->recv_command) == addr)
+        {
+            p->dev_n = i;
+            blockPCB(p, TERMINALLINE, 0); // 0 => receive
+            return;
+        }
+        else if ((memaddr) & (base_addr->transm_command) == addr)
+        {
+            p->dev_n = i;
+            blockPCB(p, TERMINALLINE, 1); // 1 => transmit
+            return;
         }
     }
-    return NULL;
-}
 
-pcb clock_wait_list = NULL; // Global list of PCBs waiting for clock tick
-
-void WaitForClock() {
-    pcb_PTR current_process = m_sender;
-    
-    pcb_PTR tmp = headProcQ(clock_wait_list)
-    while(tmp != NULL){
-        pcb_PTR aux = tmp;
-        tmp = tmp->next;
-        insertProcQ(ready_queue, aux);
-        removeProcQ(clock_wait_list);
-    }
-
-    insertProcQ(clock_wait_list, current_process);
-}
-
-
-void ssi()
-{
-  /*TODO:
-  creare variabili per salvare i risultati di alcune funzioni ???
-  "If service does not match any of those provided by the SSI, the SSI should terminate the process
-and its progeny" ???
-  SSIRequest ???
-
-  */
-    ssi_pcb = headProcQ(&ready_queue);
-    msg_t* msg;
-    while(true){
-        if((msg = popMessage(&ssi_pcb->msg_inbox)) != NULL){//msg in inbox
-            ssi_payload_PTR payload = msg->m_payload;
-            switch(payload->service_code){
-                case CREATEPROCESS://create process ???
-                    createProcess(payload);
-                    break;
-                case TERMPROCESS:
-                    terminateProcess(payload);
-                    break;
-                case DOIO:
-                    DoIO();
-                    break;
-                case GETTIME:
-                    GetCPUTime();
-                    break;
-                case CLOCKWAIT:
-                    break;
-                case GETSUPPORTPTR:
-                    GetSupportData(msg);
-                    break;
-                case GETPROCESSID:
-                    /*tocca salvarlo da qualche parte*/ msg->m_sender->p_pid;
-                    break;
-
+    // Handle all non-terminal devices
+    for (int i = 3; i <= 6; i++)
+    {
+        for (int j = 0; j <= 7; j++)
+        {
+            dtpreg_t *base_addr = (dtpreg_t *)DEV_REG_ADDR(i, j);
+            if ((memaddr) & (base_addr->command) == addr)
+            {
+                p->dev_n = j;
+                blockPCB(p, i, -1);
+                return;
             }
         }
     }
+}
+
+void ssi()
+{
+    while (1)
+    {
+        unsigned int payload; // To contain the received message
+
+        // Wait for requests; synchronous
+        unsigned int snd = SYSCALL(RECEIVEMESSAGE, ANYMESSAGE, (unsigned int)(&payload), 0);
+
+        unsigned int result; // will contain the value returned from ssi_request. If -1 there's no need to send a message to the requester.
+        // Otherwise, result itself will be the payload to be sent.
+
+        result = ssi_request((pcb_PTR)snd, (ssi_payload_t *)payload);
+
+        if (result != -1)
+            SYSCALL(SENDMESSAGE, (unsigned int)snd, result, 0);
+    }
+}
+
+/*
+ * Instantiate a new PCB as child of caller
+ * NOTE: CALLER MUST CHECK IF pcbFree_h IS EMPTY BEFORE CALLING THIS FUNCTION!!
+ */
+pcb_PTR ssi_create_process(ssi_create_process_PTR p_info, pcb_PTR parent)
+{
+    // NOTE: CALLER MUST CHECK IF pcbFree_h IS EMPTY BEFORE CALLING THIS FUNCTION!!
+    pcb_PTR newPCB = allocPcb();
+    newPCB->p_pid = pid_count;
+    pid_count++;
+    newPCB->p_supportStruct = p_info->support;
+    copyProcessorState(&(newPCB->p_s), p_info->state);
+
+    insertChild(parent, newPCB);
+    insertProcQ(&ready_queue, newPCB);
+
+    process_count++;
+    return newPCB;
+}
+
+/*
+ * Recursively terminate p and its whole subtree.
+ */
+void ssi_terminate_process(pcb_PTR p)
+{
+    if (p)
+    {
+        while (!emptyChild(p))                     // Iterate on p's children
+            ssi_terminate_process(removeChild(p)); // Remove current child from children list, then recursively terminate it
+    }
+    process_count--;
+
+    // If PCB is in a blocked queue, remove it then decrease softblock_count
+    int wasInBlockedQueue = outProcQ(&blocked_terminal_receive, p) || outProcQ(&blocked_terminal_transmit, p) || outProcQ(&blocked_disk, p) || outProcQ(&blocked_flash, p) || outProcQ(&blocked_printer, p) || outProcQ(&blocked_eth, p) || outProcQ(&blocked_IT, p);
+    if (wasInBlockedQueue)
+        softblock_count--;
+
+    outChild(p); // Utile solo per la chiamata "originale", in quelle ricorsive p è già stato scollegato dal padre
+    freePcb(p);  // Terminazione effettiva
+}
+
+/*
+ * Make caller wait for Pseudo-Clock/Interval Timer
+ */
+void ssi_waitForIT(pcb_PTR caller)
+{
+    softblock_count++;
+    insertProcQ(&blocked_IT, caller);
+}
+
+/*
+ * Returns caller's PID if wantParent==NULL, returns parent's pid otherwise.
+ */
+int ssi_getPID(pcb_PTR caller, void *wantParent)
+{
+    if (!wantParent)
+        return caller->p_pid;
+    else
+        return caller->p_parent->p_pid;
+}
+
+/*
+ * Makes caller blocked on the corresponding device's queue
+ */
+void ssi_DoIO(pcb_PTR caller, ssi_do_io_PTR do_io)
+{
+    softblock_count++;
+    blockPCBfromAddr((memaddr)do_io->commandAddr, caller); // Block caller on the queue corresponding to the specified address
+    *(do_io->commandAddr) = do_io->commandValue;           // TODO: Boh??????????
+}
+
+/*
+ * Function called during ssi() loop to satisfy the received request, represented through the message's payload.
+ */
+unsigned int ssi_request(pcb_PTR caller, ssi_payload_PTR payload)
+{
+    unsigned int res = 0;
+    switch (payload->service_code)
+    {
+    case CREATEPROCESS:
+        if (emptyProcQ(&pcbFree_h))
+            res = NOPROC;
+        else
+            res = (unsigned int)ssi_create_process((ssi_create_process_PTR)payload->arg, caller);
+        break;
+    case TERMPROCESS:
+        // If arg==NULL terminate caller, otherwise terminate process pointed to by arg
+        if (payload->arg)
+        {
+            ssi_terminate_process(payload->arg);
+            res = 0;
+        }
+        else
+        {
+            ssi_terminate_process(caller);
+            res = -1;
+        }
+        break;
+    case DOIO:
+        ssi_DoIO(caller, payload->arg);
+        res = -1;
+        break;
+    case GETTIME:
+        res = (unsigned int)caller->p_time;
+        break;
+    case CLOCKWAIT:
+        ssi_waitForIT(caller);
+        res = -1;
+        break;
+    case GETSUPPORTPTR:
+        res = (unsigned int)caller->p_supportStruct;
+        break;
+    case GETPROCESSID:
+        res = (unsigned int)ssi_getPID(caller, payload->arg);
+        break;
+    default:
+        ssi_terminate_process(caller);
+        res = -1;
+        break;
+    }
+    return res;
 }

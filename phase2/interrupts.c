@@ -1,121 +1,186 @@
 #include "../headers/lib.h"
-#include <assert.h>
+#include <umps/arch.h>
 
-void PLT_interruptHandler(), IT_interruptHandler(), nonTimer_interruptHandler(int causeIP);
-void startInterrupt(), endInterrupt();
 /*
- * Returns the IP field found in the Cause Register, but only if interrupts are currently not masked.
- * (forse)
+ * Remove p with given device number from given list. Return p if found, NULL otherwise.
  */
-int getCauseIP()
+pcb_t *unblockPcbByDevNum(int devnum, struct list_head *list)
 {
-    return getCAUSE() & IMON;
+    pcb_PTR tmp;
+    list_for_each_entry(tmp, list, p_list)
+    {
+        if (tmp->dev_n == devnum)
+            return outProcQ(list, tmp);
+    }
+    return NULL; // Not found
 }
 
 /*
- * Redirects to the appropriate interrupt handler.
+ * Based on the given bitmap, return the device number associated to the highest priority interrupt currently active.
+ * NOTE: DEVICE NUMBER AND INTERRUPT LINE ARE DIFFERENT THINGS BUT THEY HAPPEN TO BOTH HAVE VALUES IN THE 0...7 INTERVAL
  */
-void interruptHandler()
+int getHighestPriorityDevNo(int bitmap)
 {
-    startInterrupt();
+    // TODO: IMPORTANTE NON SO SE L'ORDINE GIUSTO E' QUESTO O SE ANCHE PER I DEVICE NUMBER LA PRIORITA' VA AL NUMERO PIU' BASSO COME PER LE INTERRUPT LINE !!!!
+    if (bitmap & DEV7ON)
+        return 7;
+    else if (bitmap & DEV6ON)
+        return 6;
+    else if (bitmap & DEV5ON)
+        return 5;
+    else if (bitmap & DEV4ON)
+        return 4;
+    else if (bitmap & DEV3ON)
+        return 3;
+    else if (bitmap & DEV2ON)
+        return 2;
+    else if (bitmap & DEV1ON)
+        return 1;
+    else if (bitmap & DEV0ON)
+        return 0;
+    return -1; // Should never happen
+}
 
-    int causeIP = getCauseIP();
-    if (causeIP & LOCALTIMERINT)
-        PLT_interruptHandler();
-    else if (causeIP & TIMERINTERRUPT)
-        IT_interruptHandler();
+void deviceInterruptHandler(int line, int cause, state_t *exc_state)
+{
+    pcb_PTR unblockedPCB;
+
+    // SPIEGAZIONE DI QUESTA PARTE: dev_reg_area punta all'area di memoria contenente tutte le bitmap che tengono traccia di quali dispositivi
+    // hanno un'interrupt attiva per ogni interrupt line. Accedo alla bitmap relativa alla linea richiesta tramite parametro. Da questa bitmap,
+    // estraggo il device number del dispositivo con massima priorita' che sta attualmente chiedendo un'interrupt sulla linea in questione.
+    devregarea_t *dev_reg_area = (devregarea_t *)BUS_REG_RAM_BASE;
+    unsigned int intDevsBitmap = dev_reg_area->interrupt_dev[line - 3]; // Variable that contains the bitmap of devices on the line on which the interrupt was heard
+    unsigned int devStatus;
+    unsigned int devNumber;
+
+    devNumber = getHighestPriorityDevNo(intDevsBitmap);
+
+    // Special handling for terminals, as they are handled as 2 sub-devices!
+    if (line == IL_TERMINAL)
+    {
+        termreg_t *dev_reg = (termreg_t *)DEV_REG_ADDR(line, devNumber); // dev_reg = device register
+        if (((dev_reg->transm_status) & 0x000000FF) == 5)                // Device is requesting a transmit towards a terminal
+        {                                                                // TODO: CHECK VALUES IN THE CONDITION!!!!! NON RICORDO DA DOVE LE HO PESCATE
+            // Output to terminal
+            devStatus = dev_reg->transm_status;
+            dev_reg->transm_command = ACK; // "Send" acknowledgement to the device
+            unblockedPCB = unblockPcbByDevNum(devNumber, &blocked_terminal_transmit);
+        }
+        else
+        {
+            // Input from terminal
+            devStatus = dev_reg->recv_status;
+            dev_reg->recv_command = ACK; // "Send" acknowledgement to the device
+            unblockedPCB = unblockPcbByDevNum(devNumber, &blocked_terminal_receive);
+        }
+    }
+
+    // Handling for non-terminal devices
     else
-        nonTimer_interruptHandler(causeIP);
+    {
+        dtpreg_t *dev_reg = (dtpreg_t *)DEV_REG_ADDR(line, devNumber);
+        devStatus = dev_reg->status;
+        dev_reg->command = ACK;
 
-    endInterrupt();
-}
+        struct list_head *correspondingQueue = NULL;
 
-/*
- * "Freezes" the current process's CPU timer so that the interrupt won't influence it.
- */
-void startInterrupt()
-{
+        if (line == IL_DISK)
+        {
+            correspondingQueue = &blocked_disk;
+        }
+        else if (line == IL_FLASH)
+        {
+            correspondingQueue = &blocked_flash;
+        }
+        else if (line == IL_ETHERNET)
+        {
+            correspondingQueue = &blocked_eth;
+        }
+        else if (line == IL_PRINTER)
+        {
+            correspondingQueue = &blocked_printer;
+        }
+
+        // Terminals are missing because terminal-related interrupt have been dealt with in the other branch of the if
+
+        if (correspondingQueue == NULL)
+            unblockedPCB = NULL;
+        else
+            unblockedPCB = unblockPcbByDevNum(devNumber, correspondingQueue);
+    }
+
+    if (unblockedPCB != NULL) // Found a PCB to unblock; unblock it
+    {
+        unblockedPCB->p_s.reg_v0 = devStatus;
+        send_msg(ssi_pcb, unblockedPCB, (memaddr)devStatus); // Send message to unblocked process
+        insertProcQ(&ready_queue, unblockedPCB);
+        softblock_count--;
+    }
     if (current_process != NULL)
     {
-        // current_process->p_time += ...
-        // ^ aggiorna cpu time del processo
+        LDST(exc_state); // Resume current process
     }
-    setSTATUS(getSTATUS() & ~TEBITON);
-}
-
-/*
- * "Unfreezes" the current process's CPU timer. If the process still exists it gets put back into execution, otherwise the scheduler is called.
- */
-void endInterrupt()
-{
-    setSTATUS(getSTATUS() | TEBITON);
-    // STCK(...)
-    if (current_process != NULL)
-        LDST((state_t *)BIOSDATAPAGE);
     else
-        scheduler();
+        scheduler(); // No process was executing before the interrupt, call scheduler
 }
 
-void PLT_interruptHandler()
+// Handle Process Local Timer interrupt
+void PLT_interruptHandler(state_t *exc_state)
 {
-    setTIMER(TIMESLICE);
-
-    // Questa linea la lascio per i posteri
-    // copyProcessorStateToPCB(&CurrentProcess->p_s); // TF!?!?!?!
-
-    current_process->p_s = exc_state; // Non capisco perche' lo si debba fare ma ok
-
+    // Current process ran out of time. Copy processor state, re-insert it into ready queue, call scheduler
+    setTIMER(-1); // TODO: Forse??? Bohhhhhh ho sonno
+    update_time(current_process);
+    copyProcessorState(&(current_process->p_s), exc_state);
     insertProcQ(&ready_queue, current_process);
-
     scheduler();
 }
 
 /*
- * Interval timer went off! Reactivate all processes awaiting the IT, then re-load it with PSECOND (100ms)
+ * Interval timer went off! Reactivate all processes awaiting the IT/pseudoclock, then re-load it with PSECOND (100ms)
  */
-void IT_interruptHandler()
+void IT_interruptHandler(state_t *exc_state)
 {
     // 1
     LDIT(PSECOND);
 
     // 2
-    pcb_PTR currentPCB = headProcQ(blocked_WaitforClock);
-
-    while (currentPCB != NULL)
+    pcb_PTR currentPCB;
+    while ((currentPCB = removeProcQ(&blocked_IT)) != NULL) // Reactivate all processes waiting for IT/pseudoclock (aka the whole blocked_IT queue)
     {
-        insertProcQ(ready_queue, currentPCB);
-        pcb_PTR nextcurrentPCB = currentPCB->next;
-        removeProcQ(blocked_WaitforClock);
-        outProcQ(blocked_queue, currentPCB);
-        currentPCB = nextcurrentPCB;
+        send_msg(ssi_pcb, currentPCB, 0);
+        insertProcQ(&ready_queue, currentPCB);
+        softblock_count--;
     }
 
     // 3
-    state_t *excState = (state_t *)BIOSDATAPAGE;
-    LDST(excState)
+    if (current_process != NULL)
+        LDST(exc_state); // Resume current process
+    else
+        scheduler(); // No process was executing before the interrupt, call scheduler
 }
 
-int getHighestPriorityDevNo(int causeIP)
+/*
+ * Redirects to the appropriate interrupt handler.
+ */
+void interruptHandler(int cause, state_t *exc_state)
 {
-    if (causeIP < 3 || causeIP > 7)
-        return -1; // should never happen; remove if it actually does not happen
-
-    unsigned int bitMapAddressOffset = 0x04 * (causeIP - 3); // 0x00 if interrupt line is 3, 0x04 if line is 4, 0x08 if 5, etc
-    unsigned int baseAddr = 0x10000040;
-    unsigned int devBitMap = *(baseAddr + bitMapAddressOffset);
-    int i = 0;
-
-    while (devBitMap > 0)
-    {
-        if (devBitMap % 2 == 1)
-            return i;
-        i++;
-        devBitMap <<= 1;
-    }
-
-    return -1;
+    if (CAUSE_IP_GET(cause, IL_CPUTIMER))
+        PLT_interruptHandler(exc_state);
+    else if (CAUSE_IP_GET(cause, IL_TIMER))
+        IT_interruptHandler(exc_state);
+    else if (CAUSE_IP_GET(cause, IL_DISK))
+        deviceInterruptHandler(IL_DISK, cause, exc_state);
+    else if (CAUSE_IP_GET(cause, IL_FLASH))
+        deviceInterruptHandler(IL_FLASH, cause, exc_state);
+    else if (CAUSE_IP_GET(cause, IL_ETHERNET))
+        deviceInterruptHandler(IL_ETHERNET, cause, exc_state);
+    else if (CAUSE_IP_GET(cause, IL_PRINTER))
+        deviceInterruptHandler(IL_PRINTER, cause, exc_state);
+    else if (CAUSE_IP_GET(cause, IL_TERMINAL))
+        deviceInterruptHandler(IL_TERMINAL, cause, exc_state);
 }
 
+/*
 void nonTimer_interruptHandler(int causeIP)
 {
     // 1
@@ -134,15 +199,18 @@ void nonTimer_interruptHandler(int causeIP)
     // 4
     // Dove e con scritto cosa?
     // TODO: It is possible that there isn’t any PCB waiting for this device. This can happen if while waiting for the initiated I/O operation to complete, an ancestor of this PCB was terminated. In this case, simply return control to the Current Process.
-    pcb_PTR unblockedPCB /*= PCB which initiated this I/O operation and then requested the status response via a SYS2 operation*/;
+    pcb_PTR unblockedPCB //= PCB which initiated this I/O operation and then requested the status response via a SYS2 operation
+;
 
-    // 5
-    unblockedPCB->reg_v0 = statusCode;
+// 5
+unblockedPCB->reg_v0 = statusCode;
 
-    // 6
-    softblock_count--;
-    insertProcQ(&ready_queue, unblockedPCB);
+// 6
+softblock_count--;
+insertProcQ(&ready_queue, unblockedPCB);
 
-    // 7
-    LDST(exc_state);
+// 7
+LDST(exc_state);
 }
+
+*/

@@ -18,6 +18,7 @@
 #include "../headers/const.h"
 #include "../headers/types.h"
 #include <umps/libumps.h>
+#include "../headers/klog.h"
 
 typedef unsigned int devregtr;
 
@@ -128,8 +129,11 @@ void print()
 
 void print_term0(char *s)
 {
+    klog_print("CIAONE1_");
     SYSCALL(SENDMESSAGE, (unsigned int)print_pcb, (unsigned int)s, 0);
+    klog_print("CIAONE2_");
     SYSCALL(RECEIVEMESSAGE, (unsigned int)print_pcb, 0, 0);
+    klog_print("CIAONE3_");
 }
 
 void clockwait_process()
@@ -149,7 +153,9 @@ void terminate_process(pcb_PTR arg)
         .arg = (void *)arg,
     };
     SYSCALL(SENDMESSAGE, (unsigned int)ssi_pcb, (unsigned int)(&term_process_payload), 0);
+    klog_print("ST_");
     SYSCALL(RECEIVEMESSAGE, (unsigned int)ssi_pcb, 0, 0);
+    klog_print("RT_");
 }
 
 pcb_PTR create_process(state_t *s)
@@ -180,7 +186,6 @@ void test()
     // test send and receive
     SYSCALL(SENDMESSAGE, (unsigned int)test_pcb, 0, 0);
     pcb_PTR sender = (pcb_PTR)SYSCALL(RECEIVEMESSAGE, ANYMESSAGE, 0, 0);
-
     if (sender != test_pcb)
         PANIC();
 
@@ -307,7 +312,7 @@ void test()
         print_term0("ERROR: p1/p2 synchronization bad\n");
     else
         print_term0("p1 knows p2 ended\n");
-
+    klog_print("BOH_");
     /* create p3 */
     p3_pcb = create_process(&p3state);
     p3pid = p3_pcb->p_pid;
