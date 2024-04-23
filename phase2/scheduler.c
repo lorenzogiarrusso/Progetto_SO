@@ -26,6 +26,9 @@ void scheduler()
         WAIT();
     }
 
-    else if (process_count > 0 && softblock_count == 0) // deadlock!
+    else if (process_count > 0 && softblock_count == 0)
+    { // deadlock!
+        klog_print("HERE_");
         PANIC();
+    }
 }

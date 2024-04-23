@@ -64,15 +64,9 @@ void passUpOrDie(int except_type, state_t *exceptionState)
         }
         else // Pass up
         {
-            /*
             copyProcessorState(&(current_process->p_supportStruct->sup_exceptState[except_type]), exceptionState);
             context_t info_to_pass = (current_process->p_supportStruct)->sup_exceptContext[except_type]; // Gather support info
             LDCXT(info_to_pass.stackPtr, info_to_pass.status, info_to_pass.pc);                          // Pass up support info to the support level
-            */
-            copyProcessorState(&(current_process->p_supportStruct->sup_exceptState[except_type]), exceptionState);
-            LDCXT(current_process->p_supportStruct->sup_exceptContext[except_type].stackPtr,
-                  current_process->p_supportStruct->sup_exceptContext[except_type].status,
-                  current_process->p_supportStruct->sup_exceptContext[except_type].pc);
         }
     }
 }

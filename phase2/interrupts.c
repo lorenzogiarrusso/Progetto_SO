@@ -21,7 +21,6 @@ pcb_t *unblockPcbByDevNum(int devnum, struct list_head *list)
  */
 int getHighestPriorityDevNo(int bitmap)
 {
-    // TODO: IMPORTANTE NON SO SE L'ORDINE GIUSTO E' QUESTO O SE ANCHE PER I DEVICE NUMBER LA PRIORITA' VA AL NUMERO PIU' BASSO COME PER LE INTERRUPT LINE !!!!
     if (bitmap & DEV7ON)
         return 7;
     else if (bitmap & DEV6ON)
@@ -60,7 +59,7 @@ void deviceInterruptHandler(int line, int cause, state_t *exc_state)
     {
         termreg_t *dev_reg = (termreg_t *)DEV_REG_ADDR(line, devNumber); // dev_reg = device register
         if (((dev_reg->transm_status) & 0x000000FF) == 5)                // Device is requesting a transmit towards a terminal
-        {                                                                // TODO: CHECK VALUES IN THE CONDITION!!!!! NON RICORDO DA DOVE LE HO PESCATE
+        {
             // Output to terminal
             devStatus = dev_reg->transm_status;
             dev_reg->transm_command = ACK; // "Send" acknowledgement to the device
@@ -128,7 +127,7 @@ void deviceInterruptHandler(int line, int cause, state_t *exc_state)
 void PLT_interruptHandler(state_t *exc_state)
 {
     // Current process ran out of time. Copy processor state, re-insert it into ready queue, call scheduler
-    setTIMER(-1); // TODO: Forse??? Bohhhhhh ho sonno
+    setTIMER(-1);
     update_time(current_process);
     copyProcessorState(&(current_process->p_s), exc_state);
     insertProcQ(&ready_queue, current_process);
@@ -179,38 +178,3 @@ void interruptHandler(int cause, state_t *exc_state)
     else if (CAUSE_IP_GET(cause, IL_TERMINAL))
         deviceInterruptHandler(IL_TERMINAL, cause, exc_state);
 }
-
-/*
-void nonTimer_interruptHandler(int causeIP)
-{
-    // 1
-    int IntlineNo = causeIP;
-    int DevNo = getHighestPriorityDevNo(causeIP);
-    assert(DevNo >= 0 && DevNo <= 7);
-    int devAddrBase = 0x10000054 + ((IntlineNo - 3) * 0x80) + (DevNo * 0x10); // Indirizzo del registro del dispositivo
-
-    // 2
-    int statusCode = *((int *)devAddrBase); // Salvo lo status code del registro del dispositivo
-
-    // 3
-    *((unsigned int *)devAddrBase) = ACK; // Dico di aver ricevuto lo stato del dispositivo
-    //? Non mi convince
-
-    // 4
-    // Dove e con scritto cosa?
-    // TODO: It is possible that there isn’t any PCB waiting for this device. This can happen if while waiting for the initiated I/O operation to complete, an ancestor of this PCB was terminated. In this case, simply return control to the Current Process.
-    pcb_PTR unblockedPCB //= PCB which initiated this I/O operation and then requested the status response via a SYS2 operation
-;
-
-// 5
-unblockedPCB->reg_v0 = statusCode;
-
-// 6
-softblock_count--;
-insertProcQ(&ready_queue, unblockedPCB);
-
-// 7
-LDST(exc_state);
-}
-
-*/

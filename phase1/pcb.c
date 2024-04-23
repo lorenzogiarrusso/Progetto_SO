@@ -1,4 +1,6 @@
 #include "../headers/pcb.h"
+#include "./headers/pcb.h"
+#include "../headers/types.h"
 
 static pcb_t pcbTable[MAXPROC];
 LIST_HEAD(pcbFree_h);
@@ -10,7 +12,9 @@ LIST_HEAD(pcbFree_h);
 void initPcbs()
 {
     for (int i = 0; i < MAXPROC; i++)
-        list_add(&(pcbTable[i].p_list), &pcbFree_h); // Inserisci ogni elemento dell'array nella lista di PCB liberi
+    {
+        freePcb(&(pcbTable[i])); // Inserisci ogni elemento dell'array nella lista di PCB liberi
+    }
 }
 
 /*
@@ -22,26 +26,27 @@ static void reinitPcb(pcb_PTR p)
     INIT_LIST_HEAD(&(p->msg_inbox));
     INIT_LIST_HEAD(&(p->p_child));
     INIT_LIST_HEAD(&(p->p_list));
+    INIT_LIST_HEAD(&(p->p_sib));
     p->p_parent = NULL;
     p->p_pid = 0;
-    INIT_LIST_HEAD(&(p->p_sib));
     p->p_supportStruct = NULL;
     p->p_time = 0;
-
+    p->dev_n = -1;
     p->p_s.cause = 0;
     p->p_s.entry_hi = 0;
     p->p_s.hi = 0;
     p->p_s.lo = 0;
     p->p_s.pc_epc = 0;
     p->p_s.status = 0;
+    for (int i = 0; i < sizeof(p->p_s.gpr) / sizeof(p->p_s.gpr[0]); i++)
+        p->p_s.gpr[i] = 0;
 }
 
 /*
  * Insert the element pointed to by p onto the pcbFree list.
  */
-void freePcb(pcb_PTR p)
+void freePcb(pcb_t *p)
 {
-    list_del(&(p->p_list));
     list_add_tail(&(p->p_list), &pcbFree_h); // Inserisci in fondo alla lista di PCB liberi (gestita con FIFO)
 }
 
@@ -98,11 +103,7 @@ void insertProcQ(struct list_head *head, pcb_PTR p)
  */
 pcb_PTR headProcQ(struct list_head *head)
 {
-    struct list_head *firstElem = list_next(head);
-    if (firstElem == NULL) // Ovvero la lista e' vuota
-        return NULL;
-    else
-        return container_of(firstElem, struct pcb_t, p_list);
+    return (emptyProcQ(head) ? NULL : container_of(head->next, pcb_t, p_list));
 }
 
 /*
@@ -117,8 +118,9 @@ pcb_PTR removeProcQ(struct list_head *head)
         return NULL;
     else
     {
-        list_del(head->next); // Rimuovi dalla lista,
-        return headPcb;       // poi restituisci il PCB in questione
+        pcb_t *first_pcb = container_of(list_next(head), pcb_t, p_list); // salvo un puntatore all'elemento in testa
+        list_del(&(first_pcb->p_list));                                  // lo rimuovo
+        return first_pcb;
     }
 }
 
@@ -129,28 +131,18 @@ pcb_PTR removeProcQ(struct list_head *head)
  */
 pcb_PTR outProcQ(struct list_head *head, pcb_PTR p)
 {
-    pcb_t *iter;
-    list_for_each_entry(iter, head, p_list)
-    { // Itera sui PCB veri e propri nella coda
-        if (iter == p)
-            return removeProcQ(list_prev(&(p->p_list))); // PCB trovato nella coda e rimosso
+    struct list_head *iter;
+    pcb_t *q;
+    list_for_each(iter, head)
+    {
+        q = container_of(iter, pcb_t, p_list); // prendo l'elemento dell'iterazione corrente
+        if (q == p)
+        { // se corrisponde a p lo rimuovo e lo ritorno
+            list_del(&(q->p_list));
+            return p;
+        }
     }
     return NULL; // PCB NON trovato nella coda
-}
-
-/*
- * Looks for the PCB pointed to by p in the process queue whose head pointer is pointed to by head.
- * If not found, return NULL. If found, returns p WITHOUT removing it from the queue.
- */
-pcb_PTR findProcQ(struct list_head *head, pcb_PTR p)
-{
-    pcb_t *iter;
-    list_for_each_entry(iter, head, p_list)
-    { // Itera sui PCB veri e propri nella lista
-        if (iter == p)
-            return p; // PCB trovato nella coda e restituito
-    }
-    return NULL; // PCB NON trovato nella lista
 }
 
 /*
@@ -158,7 +150,7 @@ pcb_PTR findProcQ(struct list_head *head, pcb_PTR p)
  */
 int emptyChild(pcb_PTR p)
 {
-    return emptyProcQ(&(p->p_child));
+    return list_empty(&(p->p_child));
 }
 
 /*
@@ -187,8 +179,10 @@ pcb_PTR removeChild(pcb_PTR p)
         return NULL;
     else
     {
-        pcb_PTR firstChild = removeProcQ(&(p->p_child));
-        return firstChild;
+        pcb_t *first_child = container_of(list_next(&(p->p_child)), pcb_t, p_sib); // ricerca primo figlio
+        list_del(&(first_child->p_sib));                                           // rimozione figlio dalla lista dei fratelli
+        first_child->p_parent = NULL;                                              // rimozione legame padre-figlio
+        return first_child;
     }
 }
 
@@ -205,6 +199,22 @@ pcb_PTR outChild(pcb_PTR p)
     else
     {
         list_del(&(p->p_sib));
+        p->p_parent = NULL;
         return p;
     }
+}
+
+/*
+ * Looks for the PCB pointed to by p in the process queue whose head pointer is pointed to by head.
+ * If not found, return NULL. If found, returns p WITHOUT removing it from the queue.
+ */
+pcb_PTR findProcQ(struct list_head *head, pcb_PTR p)
+{
+    pcb_t *iter;
+    list_for_each_entry(iter, head, p_list)
+    { // Itera sui PCB veri e propri nella lista
+        if (iter == p)
+            return p; // PCB trovato nella coda e restituito
+    }
+    return NULL; // PCB NON trovato nella lista
 }

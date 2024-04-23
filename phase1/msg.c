@@ -10,7 +10,10 @@ LIST_HEAD(msgFree_h);
 void initMsgs()
 {
     for (int i = 0; i < MAXMESSAGES; i++)
+    {
         list_add(&(msgTable[i].m_list), &msgFree_h); // Inserisci ogni elemento dell'array nella lista di messaggi liberi
+        msgTable[i].m_payload = 0;
+    }
 }
 
 /*

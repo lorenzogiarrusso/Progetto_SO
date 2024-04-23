@@ -49,7 +49,6 @@ void blockPCB(pcb_PTR p, int line, int term)
  */
 void blockPCBfromAddr(memaddr addr, pcb_PTR p)
 {
-    // TODO: Controllare che rispetti davvero la formula dalle specifiche/POPS perche' non ne sono sicuro (o cambiare proprio implementazione)
     // Special handling for terminal devices due to difference between transmit and receive
     for (int i = 0; i <= 7; i++)
     {
@@ -171,7 +170,7 @@ void ssi_DoIO(pcb_PTR caller, ssi_do_io_PTR do_io)
 {
     softblock_count++;
     blockPCBfromAddr((memaddr)do_io->commandAddr, caller); // Block caller on the queue corresponding to the specified address
-    *(do_io->commandAddr) = do_io->commandValue;           // TODO: Boh??????????
+    *(do_io->commandAddr) = do_io->commandValue;
 }
 
 /*
