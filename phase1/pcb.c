@@ -118,8 +118,8 @@ pcb_PTR removeProcQ(struct list_head *head)
         return NULL;
     else
     {
-        pcb_t *first_pcb = container_of(list_next(head), pcb_t, p_list); // salvo un puntatore all'elemento in testa
-        list_del(&(first_pcb->p_list));                                  // lo rimuovo
+        pcb_t *first_pcb = container_of(list_next(head), pcb_t, p_list); 
+        list_del(&(first_pcb->p_list)); //Rimuovi primo elemento                        
         return first_pcb;
     }
 }
@@ -135,9 +135,9 @@ pcb_PTR outProcQ(struct list_head *head, pcb_PTR p)
     pcb_t *q;
     list_for_each(iter, head)
     {
-        q = container_of(iter, pcb_t, p_list); // prendo l'elemento dell'iterazione corrente
+        q = container_of(iter, pcb_t, p_list);
         if (q == p)
-        { // se corrisponde a p lo rimuovo e lo ritorno
+        {
             list_del(&(q->p_list));
             return p;
         }
@@ -179,9 +179,9 @@ pcb_PTR removeChild(pcb_PTR p)
         return NULL;
     else
     {
-        pcb_t *first_child = container_of(list_next(&(p->p_child)), pcb_t, p_sib); // ricerca primo figlio
-        list_del(&(first_child->p_sib));                                           // rimozione figlio dalla lista dei fratelli
-        first_child->p_parent = NULL;                                              // rimozione legame padre-figlio
+        pcb_t *first_child = container_of(list_next(&(p->p_child)), pcb_t, p_sib);
+        list_del(&(first_child->p_sib));                                          
+        first_child->p_parent = NULL;                                              
         return first_child;
     }
 }
