@@ -22,13 +22,11 @@ void scheduler()
     { // No ready processes to dispatch, wait for an interrupt
         current_process = NULL;
         setSTATUS(ALLOFF | IECON | IMON); //...the Scheduler must first set the Status register to enable interrupts...
-        // setTIMER(TIMERVALUE(INT_MAX));    //...and load the PLT with a very large value
         WAIT();
     }
 
     else if (process_count > 0 && softblock_count == 0)
     { // deadlock!
-        klog_print("HERE_");
         PANIC();
     }
 }

@@ -40,6 +40,7 @@ int getHighestPriorityDevNo(int bitmap)
     return -1; // Should never happen
 }
 
+//Handles an interrupt originating from a device.
 void deviceInterruptHandler(int line, int cause, state_t *exc_state)
 {
     pcb_PTR unblockedPCB;
@@ -57,7 +58,7 @@ void deviceInterruptHandler(int line, int cause, state_t *exc_state)
     // Special handling for terminals, as they are handled as 2 sub-devices!
     if (line == IL_TERMINAL)
     {
-        termreg_t *dev_reg = (termreg_t *)DEV_REG_ADDR(line, devNumber); // dev_reg = device register
+        termreg_t *dev_reg = (termreg_t *)DEV_REG_ADDR(line, devNumber); // Identify the device register
         if (((dev_reg->transm_status) & 0x000000FF) == 5)                // Device is requesting a transmit towards a terminal
         {
             // Output to terminal
@@ -77,12 +78,13 @@ void deviceInterruptHandler(int line, int cause, state_t *exc_state)
     // Handling for non-terminal devices
     else
     {
-        dtpreg_t *dev_reg = (dtpreg_t *)DEV_REG_ADDR(line, devNumber);
+        dtpreg_t *dev_reg = (dtpreg_t *)DEV_REG_ADDR(line, devNumber); // Identify the device register
         devStatus = dev_reg->status;
-        dev_reg->command = ACK;
+        dev_reg->command = ACK; // "Send" acknowledgement to the device
 
         struct list_head *correspondingQueue = NULL;
 
+        // Identify the blocked queue corresponding to the Interval Line to be considered
         if (line == IL_DISK)
         {
             correspondingQueue = &blocked_disk;

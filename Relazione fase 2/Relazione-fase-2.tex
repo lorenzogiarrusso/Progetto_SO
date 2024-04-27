@@ -1,0 +1,132 @@
+\documentclass[a4paper]{article}
+\title{Progetto $\mu$MPS3, fase 2}
+\author{Ahmed Ayad, Andrea Zanella, Gabriele Bernardi, Lorenzo Giarrusso}
+\author{
+ Ahmed Ayad\\
+  \texttt{ahmed.ayad@studio.unibo.it}
+  \and
+  Andrea Zanella\\
+  \texttt{andrea.zanella7@studio.unibo.it}
+  \and
+  Gabriele Bernardi\\
+  \texttt{gabriele.bernardi5@studio.unibo.it}
+  \and
+  Lorenzo Giarrusso\\
+  \texttt{lorenzo.giarrusso@studio.unibo.it}
+}
+
+\begin{document}
+\maketitle
+\pagebreak
+\tableofcontents
+\pagebreak
+
+\section{Modifiche alle strutture dati della fase 1}
+L'unica modifica alle strutture dati create per la fase 1 riguarda l'aggiunta del campo \verb+int dev_n+ alla struttura \verb+pcb_t+. Questo campo viene
+usato per rappresentare il numero del dispositivo su cui il PCB si è bloccato in attesa di un'operazione di I/O.
+
+\section{main.c}
+Il main segue semplicemente quanto richiesto dalle specifiche, dividendosi in 3 fasi:
+\begin{enumerate}
+	\item Inizializzazione di strutture dati e variabili.
+	\item Istanziazione dei PCB per l'SSI e per il processo di test.
+	\item Chiamata dello scheduler
+\end{enumerate}
+Le uniche scelte implementative visibili in questo file e degne di spiegazione sono le seguenti:
+\begin{itemize}  
+	\item I PCB bloccati sui dispositivi sono gestiti tramite più code, una per ogni tipo di dispositivo, con in particolare una gestione separata dei terminali 
+		per trasmissione e ricezione. Un'alternativa a questa scelta sarebbe stata l'idea di utilizzare una singola coda generale per tutti i processi bloccati.
+		Sebbene inizialmente avessimo optato per la seconda alternativa, questa risultava richiedere controlli e operazioni onerose per lo sblocco dei PCB 
+		tale da garantire la fairness.
+	\item I PCB bloccati in attesa di un messaggio non hanno una propria coda dedicata, ma sono distinti "per esclusione": se un PCB esiste ma non è nella
+		ready queue, allora è necessariamente bloccato, dunque lo sblocco. Se era bloccato non in attesa di quel messaggio, semplicemente si 
+		bloccherà di nuovo.
+	\item Poiché altri moduli avranno bisogno di poter accedere ad alcune variabili qui definite, ad esempio al puntatore \verb+current_process+ ed ai 
+		contatori di processi esistenti e di quelli bloccati (\verb+process_count+ e \verb+softblock_count+), tutte queste variabili sono dichiarate come 
+		globali. Sebbene questo sia poco elegante, l'abbiamo ritenuto preferibile per evitare di avere funzioni con grandi quantità di parametri.
+\end{itemize}
+
+\section{scheduler.c}
+L'implementazione dello scheduler segue quanto descritto nelle specifiche:
+\begin{itemize}
+\item Se c'è qualche processo nella ready queue, questo viene estratto dalla coda, si assegnano i valori appositi al PLT e alla variabile \verb+startTime+ e lo
+	si mette in esecuzione caricando il suo stato.
+\item Altrimenti, se l'unico processo attualmente esistente è l'SSI, il sistema va in HALT.
+\item Altrimenti, se esistono anche altri processi ma sono tutti attualmente in attesa, il sistema va in WAIT per attendere le interrupt.
+\item Altrimenti, se esistono anche altri processi ma risulta che nessuno sia in attesa, si ha una situazione di deadlock, dunque il sistema va in PANIC.
+\end{itemize}
+
+\section{exceptions.c}
+Oltre alle tre funzioni principali previste dalle specifiche (\verb+passUpOrDie+, \verb+syscallHandler+ e \verb+exceptionHandler+), sono qui definite alcune funzioni di servizio:
+\begin{itemize}
+	\item \verb+update_time+: funzione che aggiorna il campo \verb+p_time+ di un PCB in modo che esso contenga il tempo di CPU occupato dal PCB a partire 	dall'ultima volta in cui è stato messo in esecuzione.
+	\item \verb+copyProcessorState+: funzione che semplicemente copia un valore di tipo \verb+state_t+ da una locazione ad un'altra; poiché questa è un'operazione frequente, \verb+copyProcessorState+ serve principalmente ad evitare di riscrivere ogni volta il codice.
+	\item \verb+die+: funziona che si occupa del ramo "die" del \verb+passUpOrDie+, inviando all'SSI la richiesta di terminare il processo attuale e chiamando lo scheduler.
+	\verb+send_msg+: funzione per creare un messaggio proveniente da un dato mittente ed inserirlo nell'inbox del destinatario. Gestisce il caso in cui i messaggi (disponibili in numero finito) siano già tutti usati ritornando il valore \verb+MSGNOGOOD+; se invece l'invio ha successo, restituisce 0.
+\end{itemize}
+Come da specifiche, la funzione \verb+passUpOrDie+ viene usata dall'exception handler per passare al livello di supporto la gestione di tutti gli eventi non gestibili da interrupt handler e syscall handler. In particolare, se il campo \verb+p_supportStruct+ del processo attuale è NULL si ricade nel ramo "die", altrimenti avviene l'effettivo pass up delle informazioni di supporto trovate in \verb+p_supportStruct+.
+
+La funzione \verb+syscallHandler+ viene chiamata dall'exception handler quando riceve una richiesta SYS1 (syscall per inviare un messaggio) o SYS2 (syscall per ricevere un messaggio). Le due system call possono essere soddisfatte solo se il PCB che le ha richieste sta eseguendo in kernel mode, dunque si controlla il corrispondente bit nel registro di controllo Status (acceduto tramite \verb+getSTATUS+, isolando il bit Kernel/User tramite un AND bitwise con la costante \verb+USERPON+, e facendo lo shift di 3 posizioni). Se il bit Kernel/User vale 1 allora il processo stava eseguendo in user mode, dunque la richiesta non è lecita, e si lancia un'apposita eccezione di codice \verb+GENERALEXCEPT+ specificando la causa dell'eccezione tramite la costante \verb+PRIVINSTR+. Se invece il bit Kernel/User è 0, allora si procede. La distinzione fra una richiesta SYS1 e una richiesta SYS2 viene effettuata basandosi sul valore del registro a0 nello stato del processore al momento del lancio dell'eccezione (\verb+exc_state->reg_a0+).
+
+Se il registro a0 contiene il valore della costante \verb+SENDMESSAGE+, allora si deve tentare di effettuare l'invio di un messaggio. In particolare, il destinatario è specificato in \verb+reg_a1+, il payload in \verb+reg_a2+, mentre dobbiamo salvare in \verb+reg_v0+ un valore rappresentante l'esito dell'invio (\verb+DEST_NOT_EXIST+ se il destinatario è un PCB attualmente non allocato, 0 se l'invio è stato completato, \verb+MSGNOGOOD+ altrimenti). La logica è la seguente:
+\begin{enumerate}
+\item Controlla se la destinazione esiste (ovvero se il PCB destinatario \emph{non} è nella coda dei PCB liberi \verb+pcbFree_h+) e se è nella ready queue;
+\item Se il PCB destinatario non esiste, copia il valore della costante \verb+DEST_NOT_EXIST+ in \verb+reg_v0+, senza fare altro.
+\item Altrimenti, se il PCB destinatario è nella ready queue (e dunque non ha bisogno di essere sbloccato) o se il messaggio è diretto al mittente stesso (in qual caso sicuramente non è bloccato), il messaggio viene semplicemente inserito nell'inbox del PCB destinatario tramite la funzione \verb+send_msg+ ed il suo valore di ritorno viene assegnato a  \verb+reg_v0+.
+\item Altrimenti, il PCB destinatario è sicuramente bloccato; dobbiamo dunque inserire il messaggio nel suo inbox tramite \verb+send_msg+, assegnare il valore di ritorno a \verb+reg_v0+, e sbloccare il PCB (re-inserendolo nella ready queue).
+\end{enumerate}
+
+Se il registro a0 contiene il valore della costante \verb+RECEIVEMESSAGE+, il chiamante sta richiedendo una ricezione di messaggio. In particolare, il mittente  desiderato è specificato in \verb+reg_a1+ (se il valore è \verb+ANYMESSAGE+, va bene qualsiasi mittente), la locazione in cui eventualmente salvare il payload è indicata in \verb+reg_a2+, mentre il \verb+reg_v0+ del chiamante deve alla fine contenere l'identificatore del mittente del messaggio ricevuto, come da specifica. La logica è la seguente:
+\begin{enumerate}
+\item Cerchiamo nell'inbox del chiamante un messaggio proveniente dal mittente desiderato.
+\item Se non esiste un messaggio soddisfacente, il chiamante deve venire bloccato; dunque si salva il suo stato, ne si aggiorna il campo \verb+p_time+ e si chiama lo scheduler.
+\item Altrimenti, il messaggio soddisfacente trovato viene ricevuto senza bloccare il chiamante; ovvero, l'identificatore del mittente viene memorizzato nel \verb+reg_v0+ del chiamante, il payload viene eventualmente copiato nella locazione specificata in \verb+reg_a2+, il messaggio viene re-inserito nella lista di messaggi liberi e l'esecuzione procede normalmente (dopo aver incrementato il Program Counter).
+\end{enumerate}
+
+La funzione \verb+exceptionHandler+ si occupa di gestire tutte le exceptions ricevute, semplicemente controllandone l'exception code per stabilire quale funzione chiamare per gestirle. Innanzitutto, la funzione salva le informazioni sull'exception state nel puntatore \verb+state_ t* exc_state+, che verrà poi utilizzato in ogni caso per la gestione. Come spiegato nelle specifiche, \verb+BIOSDATAPAGE+ contiene le informazioni sull'exception state, mentre la causa dell'eccezione è codificata nel campo \verb+.exc_code+ del registro Cause nell'exception state. Dunque, l'exception code viene estratto con le seguenti righe di codice:
+\begin{verbatim}
+	int cause = getCAUSE(); //Valore del registro Cause
+	unsigned int exc_code = cause & GETEXECCODE; //Estrai exception code
+	exc_code = exc_code >> CAUSESHIFT; //Shift per avere valori comodi
+\end{verbatim}
+In base al valore dell'\verb+exc_code+ possiamo semplicemente stabilire a chi inoltrare l'eccezione:
+\begin{enumerate}
+\item Se \verb+exc_code == IOINTERRUPTS+ (costante pari a 0), l'eccezione è un'interrupt, dunque si chiama l'\verb+interruptHandler+.
+\item Se l'\verb+exc_code+ ha valore fra 1 e 3 si tratta di una Page Fault Exception, dunque si chiama \verb+passUpOrDie+ specificando che il tipo di eccezione è \verb+PGFAULTEXCEPT+.
+\item Se l'\verb+exc_code+ ha valore fra 4 e 7 oppure fra 9 e 12 si tratta di una Program Trap, dunque si chiama \verb+passUpOrDie+ specificando che il tipo di eccezione è \verb+GENERALEXCEPT+.
+\item Se \verb+exc_code == SYSEXCEPTION+ (costante pari a 8), si chiama \verb+syscallHandler+.
+\item Se nessuna delle condizioni precedenti è soddisfatta, il valore dell'\verb+exc_code+ non può essere gestito, dunque il sistema va in PANIC.
+\end{enumerate} 
+
+\section{ssi.c}
+In questo modulo si definiscono due funzioni di servizio per il bloccaggio dei PCB:
+\begin{itemize}
+\item \verb+blockPCB+ si occupa di bloccare il PCB sulla linea specificata inserendolo nella apposita coda di attesa. Nel caso dei terminali, si usa il parametro \verb+term+ per sapere se si tratta di una trasmissione o una ricezione.
+\item \verb+blockPCBfromAddr+, dato un indirizzo nel parametro \verb+addr+, calcola il dispositivo corrispondente e ci blocca il PCB specificato chiamando \verb+blockPCB+.
+\end{itemize}
+
+La funzione \verb+ssi+ implementa il funzionamento dell'SSI come descritto nelle specifiche: all'interno di un ciclo infinito, l'SSI attende di ricevere una richiesta, tenta di soddisfarla ed eventualmente comunica il risultato al richiedente. In particolare, le richieste vengono processate tramite la funzione \verb+ssi_request+, che controlla is \verb+service_code+ nel payload del messaggio di richiesta per chiamare la funzione apposita per quel tipo di richiesta. I servizi offerti sono quelli definiti nella sezione 7 delle specifiche:
+\begin{enumerate}
+\item \verb+ssi_create_process+: crea un processo come figlio del richiedente.
+\item \verb+ssi_terminate_process+: termina un processo e, ricorsivamente, tutto il sotto-albero di cui è radice. Inoltre, rimuove il PCB in questione dalla coda di attesa in cui eventualmente si trovava.
+\item \verb+ssi_DoIO+: semplicemente blocca il richiedente sulla coda del dispositivo corrispondente. $\mu$MPS3 supporta infatti solo I/O sincrono, come da specifiche.
+\item Il servizio \verb+GetCPUTime+ è implementato semplicemente restituendo il campo \verb+p_time+ del chiamante.
+\item \verb+ssi_waitForIT+: mette il chiamante in attesa del prossimo tick dell'Interval Timer inserendolo nell'apposita coda.
+\item Il servizio \verb+GetSupportData+ è implementato semplicemente restituendo il campo \verb+p_supportStruct+ del chiamante.
+\item \verb+ssi_getPID+: per ottenere il PID del chiamante oppure del suo PCB padre, come da specifiche.
+\end{enumerate}
+
+\section{interrupts.c}
+In questo modulo si definiscono due funzioni di servizio:
+\begin{itemize}
+\item \verb+unblockPcbByDevNum+: semplicemente sblocca il PCB bloccato sul dispositivo indicato dal numero di dispositivo dato tramite il parametro \verb+devnum+.
+\item \verb+getHighestPriorityDevNo+: data come parametro la bitmap dei dispositivi su una certa linea, restituisce il numero del dispositivo con massima priorità fra quelli che attualmente hanno un'interrupt attiva.
+\end{itemize}
+
+La funzione \verb+interruptHandler+ si occupa di processare gli interrupt ricevuti smistandoli verso le apposite funzioni in base alla provenienza dell'interrupt. Per sapere quali linee hanno attualmente un'interrupt attiva, basta controllare il contenuto del campo IP del registro Cause e farne un AND bitwise con le apposite costanti per ogni Interrupt Line (\verb+IL_CPUTIMER+, \verb+IL_TIMER+, ecc). Si noti che il controllo delle Interrupt Line viene fatto partendo dalla 0 fino alla 7 per garantire la priorità come definita nelle specifiche (se più linee hanno un'interrupt attiva, va gestita prima l'interrupt della linea con numero minore). In base all'interrupt, \verb+interruptHandler+ chiama un'apposita funzione per la gestione:
+\begin{itemize}
+\item \verb+PLT_interruptHandler+: chiamata per una PLT Interrupt, ovvero quando il processo attualmente in esecuzione esaurisce il tempo a sua disposizione; semplicemente resetta il timer, aggiorna il campo \verb+p_time+ del processo, lo re-inserisce in fondo alla coda della ready queue e chiama lo scheduler.
+\item \verb+IT_interruptHandler+: chiamata per un'interrupt generata dall'Interval Timer, ovvero per un tick dello Pseudo-clock; re-inizializza il valore dell'Interval Timer assegnandogli il valore di \verb+PSECOND+, sblocca tutti i processi in attesa di un tick dello Pseudo-clock, e continua con l'esecuzione del processo attuale se esistente, altrimenti chiama lo scheduler.
+\item \verb+deviceInterruptHandler+: chiamata per un'interrupt proveniente da un dispositivo; innanzitutto identifica il dispositivo di cui "ascoltare" l'interrupt considerando quello di priorità massima con un'interrupt attiva sulla linea di priorità massima. Se si tratta di un terminale si ha una gestione a se stante per separare il caso della trasmissione e quello della ricezione. Individuato il dispositivo da gestire, ne si considera lo status (contenuto nel campo \verb+transm_status+ nel caso di trasmissione verso terminali, in \verb+recv_status+ nel caso di ricezione da terminali, in \verb+status+ per tutti gli altri dispositivi), lo si salva e si "invia" un acknowledgement al dispositivo scrivendo la costante \verb+ACK+ sul registro del dispositivo. In seguito, si sblocca un PCB fra quelli in attesa sulla coda di quel dispositivo: se nessun PCB era in attesa (ad esempio nel caso in cui un PCB con una richiesta in corso è stato terminato prima di ricevere risposta) semplicemente si procede, altrimenti il PCB va sbloccato inviandogli un messaggio ed inserendolo nella ready queue dopo aver scritto il valore dello status del registro del dispositivo sul suo registro \verb+reg_v0+. Infine, se prima dell'interrupt c'era un processo in esecuzione questo viene ri-caricato e continuato, altrimenti si chiama lo scheduler.
+\end{itemize}
+\end{document}

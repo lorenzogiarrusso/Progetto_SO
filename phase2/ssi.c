@@ -3,13 +3,11 @@
 
 #define TERMINALLINE 7
 
-// Codice di Lorenzo da qui
-
 unsigned int ssi_request(pcb_PTR caller, ssi_payload_PTR payload);
 
 /*
  * Function to block a PCB on the specified line by inserting it onto the appropriate blocked queue.
- * term > 0 for transmit onto terminal, otherwise for receive from terminal
+ * term > 0 to transmit onto terminal, otherwise to receive from terminal
  */
 void blockPCB(pcb_PTR p, int line, int term)
 {
@@ -144,6 +142,16 @@ void ssi_terminate_process(pcb_PTR p)
 }
 
 /*
+ * Makes caller blocked on the corresponding device's queue
+ */
+void ssi_DoIO(pcb_PTR caller, ssi_do_io_PTR do_io)
+{
+    softblock_count++;
+    blockPCBfromAddr((memaddr)do_io->commandAddr, caller); // Block caller on the queue corresponding to the specified address
+    *(do_io->commandAddr) = do_io->commandValue;
+}
+
+/*
  * Make caller wait for Pseudo-Clock/Interval Timer
  */
 void ssi_waitForIT(pcb_PTR caller)
@@ -161,16 +169,6 @@ int ssi_getPID(pcb_PTR caller, void *wantParent)
         return caller->p_pid;
     else
         return caller->p_parent->p_pid;
-}
-
-/*
- * Makes caller blocked on the corresponding device's queue
- */
-void ssi_DoIO(pcb_PTR caller, ssi_do_io_PTR do_io)
-{
-    softblock_count++;
-    blockPCBfromAddr((memaddr)do_io->commandAddr, caller); // Block caller on the queue corresponding to the specified address
-    *(do_io->commandAddr) = do_io->commandValue;
 }
 
 /*

@@ -119,7 +119,6 @@ void syscallHandler(state_t *exc_state)
                 // No satisfactory message in the inbox: save its state, update its time and block the process
                 copyProcessorState(&(current_process->p_s), exc_state);
                 update_time(current_process);
-                // softblock_count++; ??? non serve perchè non inserito in una queue, forse?
 
                 scheduler();
             }
