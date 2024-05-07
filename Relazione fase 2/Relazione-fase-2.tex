@@ -18,7 +18,7 @@
 \maketitle
 \pagebreak
 \tableofcontents
-
+\pagebreak
 \section{Modifiche alle strutture dati della fase 1}
 Nella fase 2 del progetto, si \'e deciso di introdurre una modifica alle strutture dati esistenti per includere un campo aggiuntivo chiamato \verb+int dev_n+ nella struttura \verb+pcb_t+. Questo campo \'e stato aggiunto per rappresentare il numero del dispositivo su cui il PCB si \'e bloccato in attesa di un'operazione di I/O. Questa modifica \'e stata necessaria per gestire in modo pi\'u efficiente i processi bloccati sui dispositivi, consentendo un'identificazione pi\'u rapida e precisa del dispositivo coinvolto.
 
@@ -26,14 +26,14 @@ Nella fase 2 del progetto, si \'e deciso di introdurre una modifica alle struttu
 \section{main.c}
 Il main \'e strutturato seguendo fedelmente le specifiche richieste, suddividendosi in tre fasi principali:\begin{enumerate}
 	\item \textbf{Inizializzazione di strutture dati e variabili:} Questa fase \'e dedicata alla preparazione dell'ambiente di esecuzione. Qui vengono create e inizializzate le strutture dati necessarie e le variabili che saranno utilizzate durante l'esecuzione del programma.
-  \item \textbf{Istanziazione dei PCB per l’SSI e per il processo di test:} In questa fase vengono istanziati i Process Control Block (PCB) per il Sub-System Interfacing (SSI) e per il processo di test. Ogni PCB rappresenta un'entit\'a gestita dal sistema operativo e contiene le informazioni necessarie per il suo controllo e la sua gestione.
-  \item \textbf{Chiamata dello scheduler:} L'ultima fase comporta la chiamata dello scheduler, che \'e responsabile della gestione della concorrenza e della schedulazione dei processi. Lo scheduler determina quale processo debba essere eseguito in base a politiche predefinite.
+  \item \textbf{Istanziazione dei PCB per l’SSI e per il processo di test:} In questa fase vengono istanziati i Process Control Block (PCB) per la System Service Interface (SSI) e per il processo di test. Ogni PCB rappresenta un programma in esecuzione e contiene le informazioni necessarie per il suo controllo e la sua gestione.
+  \item \textbf{Chiamata dello scheduler:} L'ultima fase comporta la chiamata dello scheduler, che \'e responsabile della gestione della schedulazione dei processi. Lo scheduler determina quale processo debba essere eseguito in base a politiche predefinite. Si usa uno scheduling di tipo round-robin.
 \end{enumerate}
 Le decisioni implementative rilevanti e meritevoli di spiegazione sono le seguenti:
 \begin{itemize}  
-	\item I PCB bloccati sui dispositivi sono gestiti tramite code multiple, una per ogni tipo di dispositivo. In particolare, i terminali per la trasmissione e la ricezione hanno una gestione separata. Questa scelta \'e stata fatta dopo aver valutato un'alternativa che prevedeva l'utilizzo di una singola coda generale per tutti i processi bloccati. Tuttavia, l'implementazione di una coda separata per ogni tipo di dispositivo \'e stata preferita perché l'alternativa avrebbe richiesto controlli e operazioni pi\'u onerose per lo sblocco dei PCB, compromettendo la fairness del sistema.
+	\item I PCB bloccati sui dispositivi sono gestiti tramite code multiple, una per ogni tipo di dispositivo. In particolare, i terminali hanno una gestione separata per trasmissione e ricezione. Questa scelta \'e stata fatta dopo aver valutato un'alternativa che prevedeva l'utilizzo di una singola coda generale per tutti i processi bloccati. Tuttavia, l'implementazione di una coda separata per ogni tipo di dispositivo \'e stata preferita perché l'alternativa avrebbe richiesto controlli e operazioni pi\'u onerose per lo sblocco dei PCB, compromettendo la fairness del sistema.
 	\item I PCB bloccati in attesa di un messaggio non dispongono di una coda dedicata, ma sono identificati "per esclusione": se un PCB non \'e nella ready queue, allora \'e necessariamente bloccato e pertanto va sbloccato. Questo approccio semplifica la gestione dei PCB bloccati, garantendo che i processi vengano correttamente gestiti senza dover mantenere code separate per ciascun tipo di blocco.
-	\item Dato che altri moduli possono necessitare di accedere a variabili definite in questo contesto, come il puntatore \verb+current_processed+ e i contatori dei processi esistenti e di quelli bloccati (\verb+process_count+, \verb+softblock_count+), queste variabili sono dichiarate come globali. Sebbene questa scelta possa apparire poco elegante, \'e stata preferita per evitare l'eccessiva complessit\'a delle funzioni e il passaggio di grandi quantit\'a di parametri attraverso le chiamate di funzione.
+	\item Dato che altri moduli possono necessitare di accedere a variabili definite in questo contesto, come il puntatore \verb+current_process+ e i contatori dei processi esistenti e di quelli bloccati (\verb+process_count+, \verb+softblock_count+), queste variabili sono dichiarate come globali. Sebbene questa scelta possa apparire poco elegante, \'e stata preferita per evitare l'eccessiva complessit\'a delle chiamate a funzioni che sarebbe stata causata dal passaggio, ad ogni chiamata, dei parametri necessari.
 \end{itemize}
 
 
@@ -41,17 +41,16 @@ Le decisioni implementative rilevanti e meritevoli di spiegazione sono le seguen
 Nel file \texttt{scheduler.c}, l'implementazione dello scheduler segue rigorosamente le specifiche fornite. Esaminiamo dettagliatamente il funzionamento del codice, che si articola nei seguenti quattro punti:
 
 \subsection{Estrazione e esecuzione dei processi dalla ready queue}
-Il concetto di "ready queue" rappresenta una coda dei processi che sono pronti per essere eseguiti dalla CPU. Quando un processo \'e pronto, significa che ha completato le operazioni di inizializzazione e attesa di risorse esterne e ora \'e in attesa di tempo di CPU per essere eseguito. L'estrazione di un processo dalla ready queue implica che il sistema operativo selezioni uno dei processi pronti per l'esecuzione in base a un algoritmo di scheduling specifico. L'assegnazione del "Program Counter" (PLT) e della variabile "startTime" \'e cruciale per stabilire lo stato iniziale del processo e avviare correttamente la sua esecuzione.
+Il concetto di "ready queue" rappresenta una coda dei processi che sono pronti per essere eseguiti dalla CPU. Quando un processo \'e pronto, significa che ha completato le operazioni di inizializzazione e attesa di risorse esterne e ora \'e in attesa di tempo di CPU per essere eseguito. L'estrazione di un processo dalla ready queue implica che il sistema operativo selezioni uno dei processi pronti per l'esecuzione in base a un algoritmo di scheduling specifico. L'assegnazione del "Process Local Timer" (PLT) e della variabile "startTime" \'e cruciale per le informazioni di accounting temporale e dunque per far rispettare il time slice assegnato ad ogni processo.
 
 \subsection{Gestione dell'SSI}
-Il "System Service Interface" (SSI) \'e un'entit\'a critica nel sistema operativo che gestisce le interfacce tra il sistema operativo stesso e i servizi di sistema. Quando l'unico processo attivo \'e l'SSI, il sistema entra in uno stato di HALT, indicando che non vi sono altre attivit\'a da eseguire al momento. Questo pu\'o accadere, ad esempio, durante il boot del sistema o in situazioni in cui tutti i processi utente sono terminati.
+La "System Service Interface" (SSI) \'e un'entit\'a critica nel sistema operativo a microkernel che gestisce le interfacce tra il kernel stesso e i servizi di sistema. Quando l'unico processo attivo \'e l'SSI, il sistema entra in uno stato di HALT, indicando che non vi sono altre attivit\'a da eseguire al momento. Questo pu\'o accadere, ad esempio, durante il boot del sistema o in situazioni in cui tutti i processi utente sono terminati.
 
 \subsection{Attesa di interrupt}
 L'attesa di interrupt \'e una fase in cui il sistema operativo si mette in attesa di segnali esterni o eventi hardware che richiedono una risposta immediata. Gli interrupt possono provenire da periferiche esterne, timer hardware o altri eventi che richiedono l'attenzione immediata del sistema operativo. Durante questa fase, il sistema rimane in uno stato di inattivit\'a relativa, consumando meno risorse finché non si verifica un interrupt.
 
 \subsection{Gestione dei deadlock}
-Il "deadlock" \'e una situazione critica in cui due o pi\'u processi si bloccano reciprocamente, ognuno aspettando che l'altro rilasci una risorsa che ha in uso, impedendo cos\'i l'avanzamento. Nel contesto del sistema operativo, un deadlock pu\'o verificarsi se tutti i processi sono in attesa di una risorsa che non pu\'o essere rilasciata fino a quando un altro processo non rilascia una risorsa che detiene. La gestione del deadlock \'e fondamentale per garantire la stabilit\'a del sistema operativo e pu\'o comportare l'identificazione dei processi coinvolti nel deadlock e l'adozione di misure correttive, come la terminazione di alcuni processi o il rilascio forzato delle risorse. L'entrata in uno stato di PANIC indica una condizione critica del sistema che richiede un'azione immediata da parte del sistema operativo per ripristinare la normale operativit\'a.
-
+Il "deadlock" \'e una situazione critica in cui due o pi\'u processi si bloccano reciprocamente, ognuno aspettando che l'altro rilasci una risorsa che ha in uso, impedendo cos\'i l'avanzamento. Nel contesto del sistema operativo, un deadlock pu\'o verificarsi se tutti i processi sono in attesa di una risorsa che non pu\'o essere rilasciata fino a quando un altro processo non rilascia una risorsa che detiene. La gestione del deadlock \'e fondamentale per garantire la stabilit\'a del sistema operativo e pu\'o comportare l'identificazione dei processi coinvolti nel deadlock e l'adozione di misure correttive, come la terminazione di alcuni processi o il rilascio forzato delle risorse. Nel nostro caso, si è scelto di utilizzare l'\textit{ostrich algorithm}, semplicemente mandando il sistema in PANIC qualora si individui una situazione di deadlock.
 
 
 \section{exceptions.c}
@@ -60,8 +59,8 @@ Oltre alle tre funzioni principali previste dalle specifiche (\verb+passUpOrDie+
 \begin{itemize}
 \item \verb+update_time+: Questa funzione aggiorna il campo \verb+p_time+ di un Process Control Block (PCB), che contiene il tempo di CPU occupato dal PCB dalla sua ultima esecuzione.
 \item \verb+copyProcessorState+: Questa funzione copia un valore di tipo \verb+state_t+ da una locazione all'altra. Essendo un'operazione frequente, \verb+copyProcessorState+ aiuta a evitare la riscrittura del codice.
-\item \verb+die+: Questa funzione si occupa del ramo "die" del \verb+passUpOrDie+, inviando una richiesta all'SSI per terminare il processo attuale e chiamare lo scheduler.
-\item \verb+send_msg+: Questa funzione crea un messaggio proveniente da un mittente specifico e lo inserisce nella casella di posta del destinatario. Gestisce il caso in cui tutte le caselle di posta siano già piene, restituendo il valore \verb+MSGNOGOOD+; altrimenti, restituisce 0 se l'invio ha successo.
+\item \verb+die+: Questa funzione si occupa del ramo "die" del \verb+passUpOrDie+, inviando una richiesta all'SSI per terminare il processo attuale e chiamando lo scheduler.
+\item \verb+send_msg+: Questa funzione crea un messaggio proveniente da un mittente specifico e lo inserisce nell'inbox del destinatario. Gestisce il caso in cui non sia possibile allocare un altro messaggio restituendo il valore \verb+MSGNOGOOD+; altrimenti, restituisce 0 se l'invio ha successo.
 \end{itemize}
 
 Come specificato, la funzione \verb+passUpOrDie+ viene utilizzata dall'exception handler per gestire gli eventi non gestibili da interrupt handler e syscall handler. Se il campo \verb+p_supportStruct+ del processo attuale è NULL, il controllo passa al ramo "die"; altrimenti, le informazioni di supporto trovate in \verb+p_supportStruct+ vengono passate al livello di supporto.
@@ -70,10 +69,10 @@ La funzione \verb+syscallHandler+ viene chiamata dall'exception handler quando r
 
 Se il registro \verb+a0+ contiene \verb+SENDMESSAGE+, viene tentato l'invio di un messaggio. Il destinatario è specificato in \verb+a1+, il payload in \verb+a2+, e il risultato dell'invio viene memorizzato in \verb+reg_v0+ (\verb+DEST_NOT_EXIST+ se il destinatario non esiste, 0 se l'invio è completato con successo, \verb+MSGNOGOOD+ altrimenti). La logica di invio comprende:
 \begin{enumerate}
-\item Verifica dell'esistenza del destinatario nella ready queue.
-\item Se il destinatario non esiste, viene restituito \verb+DEST_NOT_EXIST+ in \verb+reg_v0+.
-\item Se il destinatario è nella ready queue o il messaggio è diretto al mittente stesso, il messaggio viene inserito nella sua casella di posta tramite \verb+send_msg+ e il valore di ritorno viene assegnato a \verb+reg_v0+.
-\item Se il destinatario è bloccato, il messaggio viene inserito nella sua casella di posta tramite \verb+send_msg+, il valore di ritorno viene assegnato a \verb+vreg_0+, e il destinatario viene sbloccato (reinserito nella ready queue).
+\item Verifica dell'esistenza del PCB destinatario ("è attualmente assegnato ad un processo?")
+\item Se il destinatario non esiste, viene restituito \verb+DEST_NOT_EXIST+ in \verb+reg_v0+
+\item Se il destinatario è nella ready queue o il messaggio è diretto al mittente stesso, il messaggio viene inserito nella sua casella di posta tramite \verb+send_msg+ e il valore di ritorno viene assegnato a \verb+reg_v0+
+\item Se il destinatario è bloccato, il messaggio viene inserito nella sua casella di posta tramite \verb+send_msg+, il valore di ritorno viene assegnato a \verb+reg_v0+, e il destinatario viene sbloccato (reinserito nella ready queue).
 \end{enumerate}
 
 Se il registro \verb+a0+ contiene \verb+RECEIVEMESSAGE+, viene richiesta la ricezione di un messaggio. Il mittente desiderato è specificato in \verb+a1+ (se \verb+ANYMESSAGE+, qualsiasi mittente va bene), il payload può essere memorizzato in \verb+a2+, e l'identificatore del mittente deve essere restituito in \verb+reg_v0+. La logica di ricezione comprende:
@@ -85,21 +84,21 @@ Se il registro \verb+a0+ contiene \verb+RECEIVEMESSAGE+, viene richiesta la rice
 
 La funzione \verb+exceptionHandler+ gestisce tutte le eccezioni ricevute controllando il codice dell'eccezione per determinare quale funzione chiamare per gestirle. Prima di tutto, la funzione salva le informazioni sullo stato dell'eccezione nel puntatore \verb+state_t* exc_state+, che viene poi utilizzato per la gestione. L'exception state è contenuto in \verb+BIOSDATAPAGE+, mentre il codice dell'eccezione è codificato nel campo \verb+exc_code+ del registro Cause nell'exception state. Il codice dell'eccezione viene estratto e interpretato per determinare l'azione da intraprendere:
 \begin{enumerate}
-\item Se \verb+exc_code == IOINTERRUPTS+, l'eccezione è un'interruzione, quindi viene chiamato l'\verb+interruptHandler+.
+\item Se \verb+exc_code == IOINTERRUPTS+, l'eccezione è un'interrupt, quindi viene chiamato l'\verb+interruptHandler+.
 \item Se \verb+exc_code+ è compreso tra 1 e 3, si tratta di una Page Fault Exception, quindi viene chiamato \verb+passUpOrDie+ specificando il tipo di eccezione come \verb+PGFAULTEXCEPT+.
 \item Se \verb+exc_code+ è compreso tra 4 e 7 oppure tra 9 e 12, si tratta di una Program Trap, quindi viene chiamato \verb+passUpOrDie+ specificando il tipo di eccezione come \verb+GENERALEXCEPT+.
 \item Se \verb+exc_code == SYSEXCEPTION+, viene chiamato \verb+syscallHandler+.
 \item Se nessuna delle condizioni precedenti è soddisfatta, il codice dell'eccezione non può essere gestito e il sistema va in PANIC.
 \end{enumerate}
 
-\section{Modulo ssi.c: Gestione dei PCB e Implementazione dei Servizi SSI}
+\section{Modulo ssi.c: Gestione dei PCB e Implementazione dei servizi della SSI}
 
-Il modulo \texttt{ssi.c} gestisce i Process Control Blocks (PCB) e implementa i servizi del Sistema di Supporto all'Interruzione (SSI). Esso definisce due funzioni di servizio per il bloccaggio dei PCB e implementa i vari servizi richiesti dalle specifiche.
+Il modulo \texttt{ssi.c} gestisce i Process Control Blocks (PCB) e implementa i servizi della System Service Interface (SSI). Esso definisce due funzioni di servizio per il bloccaggio dei PCB e implementa i vari servizi richiesti dalle specifiche.
 
 Le funzioni di servizio sono:
 
 \begin{itemize}
-\item \texttt{blockPCB}: Blocca il PCB sulla linea specificata e lo inserisce nella coda di attesa corrispondente, considerando se si tratta di una trasmissione o una ricezione per i terminali.
+\item \texttt{blockPCB}: Blocca il PCB sulla linea specificata e lo inserisce nella coda di attesa corrispondente, distinguendo fra i casi di trasmissione e ricezione per i terminali.
 
 \item \texttt{blockPCBfromAddr}: Identifica il dispositivo corrispondente a un indirizzo dato e blocca il PCB specificato tramite la funzione \texttt{blockPCB}.
 
@@ -127,11 +126,11 @@ I servizi offerti includono:
 
 \end{enumerate}
 
-In conclusione, il modulo \texttt{ssi.c} fornisce una gestione efficiente dei PCB e implementa in modo accurato i servizi necessari per il funzionamento del sistema, garantendo un'interfaccia coerente e affidabile per la gestione dei processi e delle interruzioni.
+In conclusione, il modulo \texttt{ssi.c} fornisce una gestione efficiente dei PCB e implementa in modo accurato i servizi necessari per il funzionamento del sistema, garantendo un'interfaccia coerente e affidabile per la gestione dei processi e delle interrupt.
 
-\section{Gestione degli Interrupts (\texttt{interrupts.c})}
+\section{Gestione delle Interrupts (\texttt{interrupts.c})}
 
-Il modulo \texttt{interrupts.c} contiene l'implementazione delle funzioni necessarie per gestire gli interrupts nel sistema. Le funzioni principali definite in questo modulo sono:
+Il modulo \texttt{interrupts.c} contiene l'implementazione delle funzioni necessarie per gestire le interrupt nel sistema. Le funzioni principali definite in questo modulo sono:
 
 \begin{itemize}
 \item \texttt{unblockPcbByDevNum}: Questa funzione si occupa di sbloccare il Process Control Block (PCB) che è stato precedentemente bloccato su un dispositivo specifico, identificato tramite il numero di dispositivo fornito come parametro \texttt{devnum}.
@@ -140,18 +139,18 @@ Il modulo \texttt{interrupts.c} contiene l'implementazione delle funzioni necess
 
 \end{itemize}
 
-La funzione principale, \texttt{interruptHandler}, è responsabile di processare gli interrupts ricevuti e smistarli alle funzioni appropriate in base alla loro provenienza. Per determinare quali linee hanno attualmente un'interrupt attiva, il sistema controlla il campo \texttt{IP} (Interrupt Pending) del registro \texttt{Cause} e ne effettua un'operazione di AND bitwise con le costanti specifiche per ogni linea di interrupt \verb+IL_CPUTIMER+, \verb+IL_TIMER+, ecc.).
+La funzione principale, \texttt{interruptHandler}, è responsabile di processare gli interrupts ricevuti e smistarli alle funzioni appropriate in base alla loro provenienza. Per determinare quali linee hanno attualmente un'interrupt attiva, il sistema controlla il campo \texttt{IP} (Interrupt Pending) del registro \texttt{Cause} e ne effettua un'operazione di AND bitwise con le costanti specifiche per ogni linea di interrupt (\verb+IL_CPUTIMER+, \verb+IL_TIMER+, ecc.).
 
-Si noti che il controllo delle linee di interrupt viene eseguito partendo dalla linea 0 fino alla 7, garantendo così la priorit'a definita nelle specifiche del sistema. Se più linee hanno un'interrupt attiva contemporaneamente, viene gestito prima l'interrupt della linea con il numero più basso.
+Si noti che il controllo delle linee di interrupt viene eseguito partendo dalla linea 0 fino alla 7, garantendo così la priorità definita nelle specifiche del sistema. Se più linee hanno un'interrupt attiva contemporaneamente, viene gestito prima l'interrupt della linea con il numero più basso.
 
 In base al tipo di interrupt ricevuto, la funzione \texttt{interruptHandler} chiama una delle seguenti funzioni di gestione:
 
 \begin{itemize}
-\item \verb+PLT_interruptHandler+: Chiamata per un interrupt PLT (Process Level Timer), quando il processo in esecuzione esaurisce il suo tempo allocato. Questa funzione reimposta il timer, aggiorna il campo \verb+p_time+ del processo, lo rimette in fondo alla coda dei processi pronti (\textit{ready queue}) e chiama lo scheduler per selezionare il prossimo processo da eseguire.
+\item \verb+PLT_interruptHandler+: Chiamata per un interrupt PLT (Process Local Timer), quando il processo in esecuzione esaurisce il suo tempo di esecuzione allocato. Questa funzione reimposta il timer, aggiorna il campo \verb+p_time+ del processo, lo rimette in fondo alla coda dei processi pronti (\textit{ready queue}) e chiama lo scheduler per selezionare il prossimo processo da eseguire.
 
-\item \texttt{IT\_interruptHandler}: Chiamata per un interrupt generato dall'Interval Timer, ad esempio per un tick dello \textit{Pseudo-clock}. Questa funzione reinizializza il valore dell'Interval Timer, sblocca tutti i processi in attesa di un tick dello \textit{Pseudo-clock}, e continua con l'esecuzione del processo attuale se presente, altrimenti chiama lo scheduler per selezionare un nuovo processo da eseguire.
+\item \texttt{IT\_interruptHandler}: Chiamata per un interrupt generato dall'Interval Timer, ovvero per un tick dello \textit{Pseudo-clock}. Questa funzione reinizializza il valore dell'Interval Timer, sblocca tutti i processi in attesa di un tick dello \textit{Pseudo-clock}, e continua con l'esecuzione del processo attuale se presente, altrimenti chiama lo scheduler per selezionare un nuovo processo da eseguire.
 
-\item \texttt{deviceInterruptHandler}: Chiamata per un interrupt proveniente da un dispositivo. Questa funzione gestisce il dispositivo identificando prima quello con la massima priorità e un'interrupt attiva sulla linea più alta. Se il dispositivo è un terminale, gestisce separatamente i casi di trasmissione e ricezione. Dopo aver identificato e gestito il dispositivo, viene inviato un \textit{acknowledgement} al dispositivo stesso scrivendo la costante \texttt{ACK} sul suo registro. Successivamente, viene sbloccato un PCB fra quelli in attesa sulla coda di quel dispositivo. Se nessun PCB era in attesa, la funzione procede senza ulteriori azioni. Altrimenti, il PCB viene sbloccato, un messaggio viene inviato al processo e il PCB viene inserito nella coda dei processi pronti (\textit{ready queue}). Infine, se c'era un processo in esecuzione prima dell'interrupt, questo viene ri-caricato e ripreso. In caso contrario, viene chiamato lo scheduler per selezionare un nuovo processo da eseguire.
+\item \texttt{deviceInterruptHandler}: Chiamata per un interrupt proveniente da un dispositivo. Questa funzione gestisce il dispositivo identificando prima quello con la massima priorità e un'interrupt attiva sulla linea più alta. Se il dispositivo è un terminale, gestisce separatamente i casi di trasmissione e ricezione. Dopo aver identificato e gestito il dispositivo, viene inviato un \textit{acknowledgement} al dispositivo stesso scrivendo la costante \texttt{ACK} sul suo registro. Successivamente, viene sbloccato in modo FIFO un PCB fra quelli in attesa sulla coda di quel dispositivo. Se nessun PCB era in attesa, la funzione procede senza ulteriori azioni. Altrimenti, il PCB viene sbloccato, un messaggio viene inviato al processo e il PCB viene inserito nella coda dei processi pronti (\textit{ready queue}). Infine, se c'era un processo in esecuzione prima dell'interrupt, questo viene ri-caricato e ripreso. In caso contrario, viene chiamato lo scheduler per selezionare un nuovo processo da eseguire.
 
 \end{itemize}
 \end{document}
