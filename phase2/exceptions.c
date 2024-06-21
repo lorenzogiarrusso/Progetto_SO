@@ -130,7 +130,7 @@ void syscallHandler(state_t *exc_state)
                 if (msg->m_payload != (unsigned int)NULL)
                 {
                     unsigned int *payload_ptr = (unsigned int *)exc_state->reg_a2;
-                    *payload_ptr = msg->m_payload;
+                    if(payload_ptr != NULL) *payload_ptr = msg->m_payload; //Ignore payload if a2 is NULL
                 }
                 freeMsg(msg);                 // Mark the message's "slot" as free once again, as it has now served its purpose
                 exc_state->pc_epc += WORDLEN; // Increase Program Counter's value...
