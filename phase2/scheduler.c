@@ -9,7 +9,7 @@ void scheduler()
     if (!emptyProcQ(&ready_queue))
     {
         current_process = removeProcQ(&ready_queue);
-        setTIMER(TIMESLICE); // Load timeslice (5 milliseconds) on the PLT
+        setTIMER(TIMESLICE*TIMESCALEADDR); // Load timeslice (5 milliseconds) on the PLT
         STCK(startTime);     // sets startTime to the value of the low-order word of the TOD clock divided by the Time Scale
         LDST(&(current_process->p_s));
     }
