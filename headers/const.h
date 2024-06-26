@@ -42,14 +42,17 @@
 
 /* Mikeyg Added constants */
 
-#define MAXPROC 40
-#define MAXMESSAGES 40
+#define MAXPROC 50
+#define MAXMESSAGES 50
 
 #define ANYMESSAGE 0
 #define MSGNOGOOD -1
 #define DEST_NOT_EXIST -2
 #define SENDMESSAGE -1
 #define RECEIVEMESSAGE -2
+
+#define SENDMSG 1
+#define RECEIVEMSG 2
 
 #define CREATEPROCESS 1
 #define TERMPROCESS 2
@@ -58,6 +61,11 @@
 #define CLOCKWAIT 5
 #define GETSUPPORTPTR 6
 #define GETPROCESSID 7
+
+#define GET_TOD 1
+#define TERMINATE 2
+#define WRITEPRINTER 3
+#define WRITETERMINAL 4
 
 /* Status register constants */
 #define ALLOFF 0x00000000
