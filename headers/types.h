@@ -37,7 +37,7 @@ typedef struct support_t
     context_t sup_exceptContext[2];             /* new contexts for passing up	*/
     pteEntry_t sup_privatePgTbl[USERPGTBLSIZE]; /* user page table				*/
     struct list_head s_list;
-} support_t;
+} support_t, *support_PTR;
 
 /* process table entry type */
 typedef struct pcb_t
