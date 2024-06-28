@@ -12,6 +12,7 @@
 #include "types.h"
 #include "klog.h"
 
+// PHASE 2
 extern pcb_PTR current_process;
 extern struct list_head ready_queue;
 extern struct list_head blocked_disk;              // Queue of processes blocked waiting for external disk
@@ -28,8 +29,19 @@ extern struct list_head pcbFree_h;
 extern int startTime;
 extern pcb_PTR ssi_pcb;
 
-void exceptionHandler(), interruptHandler(), scheduler(), ssi(), uTLB_RefillHandler(), copyProcessorState(state_t *dst, state_t *src), update_time(pcb_t *p);
+void exceptionHandler(),
+    interruptHandler(), scheduler(), ssi(), uTLB_RefillHandler(), copyProcessorState(state_t *dst, state_t *src), update_time(pcb_t *p);
 int send_msg(pcb_t *snd, pcb_t *dst, unsigned int payload);
 void ssi_terminate_process(pcb_PTR p);
+
+// PHASE 3
+extern swap_t swap_pool_table[POOLSIZE];
+extern pcb_PTR sst_array[UPROCMAX];               // Array of pointers to SSTs
+extern pcb_PTR terminal_processes[UPROCMAX];      // Array of pointers to terminal processes' PCBs
+extern pcb_PTR printer_processes[UPROCMAX];       // Array of pointers to printer processes' PCBs
+extern state_t uproc_states[UPROCMAX];            // Array of U-processes' states
+extern support_t uproc_support_structs[UPROCMAX]; // Array of U-processes' support structures (support_t)
+extern pcb_PTR swap_mutex_process;                // Pointer to the PCB for the swap mutex process
+extern pcb_PTR test_process;                      // Pointer to the PCB for the phase 3 test process
 
 #endif
