@@ -44,4 +44,6 @@ extern support_t uproc_support_structs[UPROCMAX]; // Array of U-processes' suppo
 extern pcb_PTR swap_mutex_process;                // Pointer to the PCB for the swap mutex process
 extern pcb_PTR test_process;                      // Pointer to the PCB for the phase 3 test process
 
+extern pcb_PTR createNewProcess(support_PTR support, state_t *state); // Wrapper function to request the creation of a process to the SSI; returns a pointer to the newly created process.
+
 #endif

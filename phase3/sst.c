@@ -14,6 +14,7 @@ unsigned int sst_terminate(int asid)
     // TODO
     // Terminazione da fare tramite richiesta all'SSI
     // Ma deve anche informare sulla terminazione il processo test
+    // Deve anche invalidare le proprie entry nella swap pool table
     return 42; // Value doesn't matter, it's just as an ACK
 }
 
@@ -22,8 +23,13 @@ unsigned int sst_write(support_t *sup, sst_print_t *payload, int dev_type)
     payload->string[payload->length] = '\0'; // Ensures string is null-terminated
 
     pcb_PTR dst = NULL;
-    // TODO tutto
-    // fetch dst from either printer pcbs or terminal pcbs; arrays?
+    int indexInArray = sup->sup_asid - 1;
+
+    // Fetch pointer to destination from either printer pcbs or terminal pcbs
+    if (dev_type == 6)
+        dst = printer_processes[indexInArray];
+    else if (dev_type == 7)
+        dst = terminal_processes[indexInArray];
 
     SYSCALL(SENDMESSAGE, (unsigned int)dst, (unsigned int)payload->string, 0);
     SYSCALL(RECEIVEMESSAGE, (unsigned int)dest, 0, 0);
@@ -56,8 +62,9 @@ support_PTR get_support_ptr()
 void sst()
 {
     support_PTR sup_ptr = get_support_ptr();
-    // boh
-    // deve creare il processo figlio??
+    state_t *state = &uproc_states[sup->sup_asid - 1];
+
+    pcb_PTR *child = createNewProcess(sup_ptr, state);
 
     while (1)
     {
@@ -68,21 +75,23 @@ void sst()
 
         unsigned int result = 0;
 
-        // TODO: effettua chiamate, valore restituito va in result (NB il valore specifico importa solo nel caso di get TOD, negli altri serve solo come ACK)
         if (payload != NULL)
         {
             switch (payload->service_code)
             {
             case GET_TOD:
+                result = sst_getTOD();
                 break;
-            case TERMINATE:
-                // Nota: parametro asid si prende da sup_ptr->sup_asid
-                break;
+            // case TERMINATE: handled in default case
             case WRITEPRINTER:
+                res = sst_writePrinter(sup_ptr, (sst_print_PTR)payload->arg);
                 break;
             case WRITETERMINAL:
+                res = sst_writeTerminal(sup_ptr, (sst_print_PTR)payload->arg);
                 break;
             default:
+                // Also covers the TERMINATE case
+                result = sst_terminate(sup_ptr->sup_asid);
                 break;
             }
         }
