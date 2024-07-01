@@ -1,5 +1,7 @@
 #include "../headers/lib.h"
 
+memaddr current_addr;
+
 swap_t swap_pool_table[POOLSIZE];
 pcb_PTR SSTs_array[UPROCMAX];              // Array of pointers to SSTs
 pcb_PTR terminal_processes[UPROCMAX];      // Array of pointers to terminal processes' PCBs
@@ -12,7 +14,7 @@ pcb_PTR test_process;                      // Pointer to the PCB for the phase 3
 // Initializes SSTs
 void init_SSTs()
 {
-    // Vedi sezione 10.1.1
+    // TODO
 
     for (int asid = 1; asid <= UPROCMAX; asid++)
     {
@@ -52,6 +54,26 @@ void init_PTE()
 void init_UProcs()
 {
     // Vedi sezione 10.1
+    for (int asid = 1; asid <= UPROCMAX; asid++)
+    {
+        // Initialize state
+        //"PC (and s_t9) set to 0x8000.00B0; the address of the start of the .text section"
+        uproc_states[asid - 1].pc_epc = (memaddr)UPROCSTARTADDR;
+        uproc_states[asid - 1].reg_t9 = (memaddr)UPROCSTARTADDR;
+
+        //"SP set to 0xC000.0000"
+        uproc_states[asid - 1].reg_sp = (memaddr)USERSTACKTOP;
+
+        //"Status set for user-mode with all interrupts and the processor Local Timer enabled"
+        uproc_states[asid - 1].status = ALLOFF | IEPON | IMON | USERPON | TEBITON;
+
+        //"EntryHi.ASID set to the process’s unique ID; an integer from [1..8]"
+        uproc_states[asid - 1].entry_hi = asid << ASIDSHIFT;
+
+        // Sezione 10.1.1
+        // Initialize SST
+        // TODO
+    }
 }
 
 // Iniitializes the Swap Pool Table
