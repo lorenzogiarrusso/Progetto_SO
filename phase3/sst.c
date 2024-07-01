@@ -11,11 +11,26 @@ unsigned int sst_getTOD()
 // Function to let an U-proc request termination of itself and its SST
 unsigned int sst_terminate(int asid)
 {
-    // TODO
-    // Terminazione da fare tramite richiesta all'SSI
-    // Ma deve anche informare sulla terminazione il processo test
-    // Deve anche invalidare le proprie entry nella swap pool table
+    // Invalidate asid's entries in the SPT
+    for (int i = 0; i < POOLSIZE; i++)
+    {
+        if (swap_pool_table[i].sw_asid == asid)
+            swap_pool_table[i].sw_asid = -1; // If frame occupied by a page belonging to this ASID, free it
+    }
+
+    // Inform test PCB about the termination
+    SYSCALL(SENDMESSAGE, (unsigned int)test_process, 0, 0);
+
+    // Request termination to the SSI
+    ssi_payload_t payload = {
+        .service_code = TERMPROCESS,
+        .arg = NULL};
+    int result;
+    SYSCALL(SENDMESSAGE, (unsigned int)ssi_pcb, (unsigned int)&payload, 0);
+    SYSCALL(RECEIVEMESSAGE, (unsigned int)ssi_pcb, (unsigned int)&result, 0);
+
     return 42; // Value doesn't matter, it's just as an ACK
+    // NB: se ritorna 42, significa che terminazione è fallita, penso?
 }
 
 unsigned int sst_write(support_t *sup, sst_print_t *payload, int dev_type)
