@@ -22,7 +22,7 @@ pcb_PTR current_process; // Pointer to the currently-executing PCB
 
 extern void test(); // from p2test.c
 
-// Non so a cosa serva ma era nelle specifiche
+/*
 void uTLB_RefillHandler()
 {
     setENTRYHI(0x80000000);
@@ -30,6 +30,7 @@ void uTLB_RefillHandler()
     TLBWR();
     LDST((state_t *)0x0FFFF000);
 }
+*/
 
 int main(void)
 {
